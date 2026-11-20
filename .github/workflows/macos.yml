@@ -1,0 +1,26 @@
+name: macOS build
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check host
+        run: sw_vers && xcrun swift --version
+      - name: Test discovery and pairing policies
+        run: swift test
+      - name: Build signed local app
+        run: bash scripts/build-app.sh
+      - name: Archive app
+        run: ditto -c -k --sequesterRsrc --keepParent "build/Bluetooth Watch.app" build/BluetoothWatch.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BluetoothWatch-macOS
+          path: build/BluetoothWatch.zip
