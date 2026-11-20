@@ -94,6 +94,7 @@ final class ClassicPairingDriver: NSObject, PairingDriver {
             }
         }) else {
             finish(.failed("A visible BluetoothWatch window is required to confirm pairing. Open the app and retry, or use Bluetooth settings."), stopPair: true)
+            return
         }
     }
 
@@ -133,6 +134,7 @@ final class ClassicPairingDriver: NSObject, PairingDriver {
             pair.replyPINCode(bytes.count, pinCode: &pinCode)
         }) else {
             finish(.failed("A visible BluetoothWatch window is required to enter the PIN. Open the app and retry, or use Bluetooth settings."), stopPair: true)
+            return
         }
     }
 
