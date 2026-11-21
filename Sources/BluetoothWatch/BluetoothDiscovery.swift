@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 @preconcurrency import CoreBluetooth
 @preconcurrency import IOBluetooth
 import BluetoothWatchCore
@@ -8,12 +9,18 @@ final class BluetoothDiscovery: NSObject {
     var onDevice: ((DiscoveredDevice) -> Void)?
     var onState: ((Bool, String) -> Void)?
     private(set) var isRunning = false
+    var isClassicConfirmed: Bool { inquiryPolicy.isClassicConfirmed }
 
     private let inquiryDuration: UInt8 = 8
     private let inquiryGap: TimeInterval = 4
+    private let logger = Logger(subsystem: "local.bluetoothwatch.app", category: "Discovery")
     private var central: CBCentralManager?
     private var activeInquiry: IOBluetoothDeviceInquiry?
     private var activeInquiryGeneration: UInt64?
+    private var activeInquiryFoundCount = 0
+    private var inquiryPolicy = ClassicInquiryPolicy()
+    private let startGracePeriod: TimeInterval = 2
+    private var lastMessage = ""
     private var wantsMonitoring = false
     private var generation: UInt64 = 0
     private var classicGapTimer: Timer?
@@ -35,6 +42,7 @@ final class BluetoothDiscovery: NSObject {
     func stop() {
         wantsMonitoring = false
         generation &+= 1
+        inquiryPolicy.reset()
         classicGapTimer?.invalidate()
         classicGapTimer = nil
         central?.stopScan()
@@ -79,6 +87,7 @@ final class BluetoothDiscovery: NSObject {
         switch state {
         case .poweredOn:
             generation &+= 1
+            inquiryPolicy.reset()
             startTransportsIfReady()
         case .unauthorized:
             stopTransportsForUnavailableState()
@@ -131,11 +140,15 @@ final class BluetoothDiscovery: NSObject {
         inquiry.updateNewDeviceNames = false
         activeInquiry = inquiry
         activeInquiryGeneration = generation
+        activeInquiryFoundCount = 0
+        inquiryPolicy.beginInquiry()
 
         let result = inquiry.start()
+        logger.notice("Classic inquiry start returned \(Self.errorCode(result), privacy: .public).")
         guard result == kIOReturnSuccess else {
             activeInquiry = nil
             activeInquiryGeneration = nil
+            inquiryPolicy.reset()
             central?.stopScan()
             setRunning(
                 false,
@@ -146,10 +159,34 @@ final class BluetoothDiscovery: NSObject {
         if !isRunning {
             setRunning(false, message: "Waiting for macOS to begin Bluetooth Classic discovery...")
         }
+        // macOS 26 does not deliver deviceInquiryStarted; a throttled start fails fast instead.
+        let startedGeneration = generation
+        Timer.scheduledTimer(withTimeInterval: startGracePeriod, repeats: false) { [weak self, weak inquiry] _ in
+            Task { @MainActor in
+                guard let self, let inquiry, inquiry === self.activeInquiry,
+                      self.activeInquiryGeneration == startedGeneration else { return }
+                self.observeInquiry(.gracePeriodElapsed)
+            }
+        }
+    }
+
+    private func observeInquiry(_ evidence: ClassicInquiryPolicy.Evidence) {
+        guard activeInquiry != nil, activeInquiryGeneration == generation, wantsMonitoring else { return }
+        let changed = inquiryPolicy.observe(evidence)
+        guard changed || !isRunning else { return }
+        logger.notice("Classic inquiry evidence: \(String(describing: evidence), privacy: .public); readiness: \(String(describing: self.inquiryPolicy.readiness), privacy: .public).")
+        let message = inquiryPolicy.readiness == .confirmed
+            ? "Scanning for Bluetooth Classic and Bluetooth LE devices."
+            : "Scanning Bluetooth LE. macOS accepted Classic discovery but has not confirmed it is returning devices yet, so Classic coverage is unconfirmed."
+        setRunning(true, message: message)
+        let buffered = Array(pendingBLE.values)
+        pendingBLE.removeAll()
+        for device in buffered { deliver(device, generation: generation) }
     }
 
     private func stopTransportsForUnavailableState() {
         generation &+= 1
+        inquiryPolicy.reset()
         classicGapTimer?.invalidate()
         classicGapTimer = nil
         central?.stopScan()
@@ -179,9 +216,11 @@ final class BluetoothDiscovery: NSObject {
     }
 
     private func setRunning(_ running: Bool, message: String) {
-        let changed = isRunning != running
+        let changed = isRunning != running || message != lastMessage
         isRunning = running
+        lastMessage = message
         if changed || !running {
+            logger.notice("Discovery active: \(running). \(message, privacy: .public)")
             onState?(running, message)
         }
     }
@@ -225,11 +264,7 @@ extension BluetoothDiscovery: IOBluetoothDeviceInquiryDelegate {
     func deviceInquiryStarted(_ sender: IOBluetoothDeviceInquiry!) {
         guard let sender, sender === activeInquiry,
               activeInquiryGeneration == generation, wantsMonitoring else { return }
-        // start() can succeed before a throttled inquiry actually begins.
-        setRunning(true, message: "Scanning for Bluetooth Classic and Bluetooth LE devices.")
-        let buffered = Array(pendingBLE.values)
-        pendingBLE.removeAll()
-        for device in buffered { deliver(device, generation: generation) }
+        observeInquiry(.startedCallback)
     }
 
     func deviceInquiryDeviceFound(
@@ -241,6 +276,8 @@ extension BluetoothDiscovery: IOBluetoothDeviceInquiryDelegate {
               let callbackGeneration = activeInquiryGeneration else { return }
         let address = senderDeviceAddress(device)
         guard !address.isEmpty else { return }
+        activeInquiryFoundCount += 1
+        if callbackGeneration == generation { observeInquiry(.result) }
         deliver(
             DiscoveredDevice(
                 id: DeviceIdentity(transport: .classic, identifier: address),
@@ -256,6 +293,8 @@ extension BluetoothDiscovery: IOBluetoothDeviceInquiryDelegate {
         aborted: Bool
     ) {
         guard let sender, sender === activeInquiry else { return }
+        let wasLive = inquiryPolicy.isInquiryLive
+        logger.notice("Classic inquiry completed: error \(Self.errorCode(error), privacy: .public), aborted: \(aborted), live: \(wasLive), results: \(self.activeInquiryFoundCount).")
         activeInquiry = nil
         let callbackGeneration = activeInquiryGeneration
         activeInquiryGeneration = nil
@@ -265,15 +304,15 @@ extension BluetoothDiscovery: IOBluetoothDeviceInquiryDelegate {
             if central?.state == .poweredOn { startTransportsIfReady() }
             return
         }
-        if aborted {
+        switch inquiryPolicy.complete(error: error, aborted: aborted) {
+        case .continueAfterGap, .retryAfterGap:
             scheduleNextInquiry()
-        } else if error == kIOReturnSuccess {
-            scheduleNextInquiry()
-        } else {
+        case .fail(let code):
+            inquiryPolicy.reset()
             central?.stopScan()
             setRunning(
                 false,
-                message: "Classic Bluetooth inquiry failed (error \(Self.errorCode(error))). Bluetooth LE alone cannot provide complete device coverage. Check Bluetooth in System Settings, then retry."
+                message: "Classic Bluetooth inquiry failed (error \(Self.errorCode(code))). Bluetooth LE alone cannot provide complete device coverage. Check Bluetooth in System Settings, then retry."
             )
         }
     }

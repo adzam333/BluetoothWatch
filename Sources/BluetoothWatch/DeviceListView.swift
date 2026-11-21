@@ -8,7 +8,10 @@ struct MenuBarContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Bluetooth Watch", systemImage: "dot.radiowaves.left.and.right").font(.headline)
-            Text(model.status).font(.callout)
+            Text(model.status)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
             if model.notificationMessage != nil {
                 Label("Notifications need attention", systemImage: "bell.badge").font(.caption)
             }
@@ -35,14 +38,15 @@ struct DeviceListView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Bluetooth Watch").font(.title2.bold())
-                    Text(model.status).foregroundStyle(.secondary)
-                }
+                Text("Bluetooth Watch").font(.title2.bold())
                 Spacer()
                 Button(model.isPaused ? "Resume" : "Pause") { model.togglePause() }
                 Button("Scan Now") { model.scanNow() }.disabled(model.isPaused)
             }
+            Text(model.status)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
             Text("The first 10 seconds are quiet. Only devices first seen afterward trigger alerts. Nearby devices that advertise late can still appear as new.")
                 .font(.callout).foregroundStyle(.secondary)
             if !model.isScanning && !model.isPaused {

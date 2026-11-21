@@ -23,6 +23,14 @@ Keep the app at its installed path after registering launch at login.
 Without `--install`, the script only creates `build/Bluetooth Watch.app`.
 `CODE_SIGN_IDENTITY` optionally selects your own signing identity; the default
 is ad-hoc signing for a local build. This is not a notarized public release.
+Ad-hoc signatures change with every rebuild, so macOS may stop honoring the
+previous Bluetooth permission ("Bluetooth access is denied" after a rebuild).
+Reset it with `tccutil reset BluetoothAlways local.bluetoothwatch.app` and
+approve the prompt again, or sign with a stable `CODE_SIGN_IDENTITY`. Keep only
+one installed copy; other copies with the same bundle ID (for example in
+`/Applications`) may be launched instead. To receive alerts during a Focus, add
+Bluetooth Watch to that Focus's allowed apps; Time Sensitive alerts need an
+Apple-provisioned entitlement that local ad-hoc builds cannot use.
 No administrator access, cloud service, or third-party packages are needed.
 
 ## How it behaves
@@ -33,6 +41,10 @@ No administrator access, cloud service, or third-party packages are needed.
 - A device first observed after the baseline triggers at most one alert per
   identity per run. Expand the macOS notification to reveal **Pair** and
   **Ignore**; those buttons are also in **Show Devices**.
+- Only Bluetooth Classic devices and Bluetooth LE devices that report a name
+  alert. Anonymous BLE advertisers (often phones, watches and trackers rotating
+  private addresses) are still listed under **New this run** but never notify. A
+  BLE device first seen without a name alerts once if a name arrives later.
 - **Pair** attempts public-API pairing for supported Bluetooth Classic devices.
   Complete any PIN/passkey or confirmation prompt. Bluetooth LE and unsupported
   devices open Bluetooth settings instead. The app selects the corresponding
@@ -60,6 +72,18 @@ baseline. Some devices are not observable, advertise no useful name, or require
 vendor-specific setup. Bluetooth Classic inquiry repeats periodically, so
 detection is not instant.
 
+On macOS 26, `IOBluetoothDeviceInquiry` was observed (on one Mac) never calling
+`deviceInquiryStarted` and ending each system inquiry cycle with the
+undocumented completion code `0x1`. The app treats only `0x1` after the inquiry
+went live as a routine cycle end; any other failure after going live is shown
+and scanning stops until you press Retry, which starts a new quiet baseline.
+Failures before an inquiry goes live are retried at most three times. If
+`start()` succeeds and no failure arrives within 2 seconds, scanning proceeds,
+but that only proves no early failure. Until macOS reports a Classic device the
+status says Classic discovery is unconfirmed. The baseline still starts in that
+state, otherwise it would never complete where no Classic devices are nearby,
+so late-reporting Classic devices may alert after the baseline.
+
 BLE identifiers can change, and dual-mode devices can appear once per transport.
 Names are not used to merge devices: two different mice can have the same name.
 An observation can also become stale before you press Pair; errors are shown
@@ -80,12 +104,15 @@ than `swift run`: notifications, privacy permissions, and login registration
 depend on the app's identity and bundle metadata.
 
 ```sh
-swift test
+bash scripts/test.sh
 bash scripts/build-app.sh
 open "build/Bluetooth Watch.app"
 ```
 
-The portable XCTest target covers the ten-second boundary, startup exclusion,
+`scripts/test.sh` runs `swift test`, adding the Swift Testing search paths that
+Command Line Tools-only setups need (XCTest requires full Xcode).
+
+The portable Swift Testing target covers the ten-second boundary, startup exclusion,
 deduplication, pause/resume, ignore/undo/restart, interrupted observation, direct
 pairing decisions, settings fallback, outcomes, and cancellation.
 It can run on Linux with Swift installed. The native executable is included
@@ -96,6 +123,17 @@ archives an app when this project is hosted in a GitHub repository.
 compilation and real Bluetooth/notification/login behavior must be verified on
 a Mac. A Linux test run is not evidence that the macOS app compiles or that a
 particular peripheral supports direct pairing.
+
+Scanner status and inquiry error codes are available in macOS Console under
+subsystem `local.bluetoothwatch.app`, or in Terminal:
+
+```sh
+/usr/bin/log show --last 10m --style compact --predicate 'subsystem == "local.bluetoothwatch.app"'
+```
+
+These local diagnostic logs do not include device names or identifiers. The
+status message in **Show Devices** wraps to display the full error and can be
+selected and copied.
 
 Before relying on it, check on your Mac:
 

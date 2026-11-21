@@ -12,6 +12,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var baselineRemaining = 10
     @Published private(set) var baselineComplete = false
     @Published private(set) var scannerMessage = "Waiting to scan..."
+    @Published private(set) var classicCoverageConfirmed = false
     @Published private(set) var notificationMessage: String?
     @Published private(set) var actionMessage: String?
     @Published private(set) var pairingStatuses: [DeviceIdentity: PairingStatus] = [:]
@@ -42,8 +43,9 @@ final class AppModel: ObservableObject {
     var status: String {
         if isPaused { return "Paused" }
         if !isScanning { return scannerMessage }
-        if !baselineComplete { return "Learning nearby devices: \(baselineRemaining)s remaining" }
-        return "Watching for newly discovered devices"
+        let caveat = classicCoverageConfirmed ? "" : " (Classic discovery unconfirmed: no Classic device has responded yet)"
+        if !baselineComplete { return "Learning nearby devices: \(baselineRemaining)s remaining\(caveat)" }
+        return "Watching for newly discovered devices\(caveat)"
     }
 
     func start() {
@@ -69,6 +71,7 @@ final class AppModel: ObservableObject {
         scanner.onState = { [weak self] running, message in
             guard let self else { return }
             self.scannerMessage = message
+            self.classicCoverageConfirmed = self.scanner.isClassicConfirmed
             if running && !self.isPaused && !self.isAsleep {
                 self.session.resume(at: self.now)
             } else if self.session.isScanning {
