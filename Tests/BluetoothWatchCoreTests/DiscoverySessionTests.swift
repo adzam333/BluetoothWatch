@@ -140,6 +140,18 @@ struct DiscoverySessionTests {
         #expect(session.discover(mouse, at: 13) == false)
     }
 
+    @Test func testIgnoreConsumesPendingDelayedNameAlertAcrossUndo() {
+        var session = DiscoverySession()
+        session.resume(at: 0)
+        let anonymous = DiscoveredDevice(id: device("ignored-late-name").id)
+        #expect(session.discover(anonymous, at: 11) == false)
+
+        session.setIgnored(true, for: anonymous.id)
+        #expect(session.discover(device("ignored-late-name"), at: 12) == false)
+        session.setIgnored(false, for: anonymous.id)
+        #expect(session.discover(device("ignored-late-name"), at: 13) == false)
+    }
+
     @Test func testRestartClearsIgnoredAndBaselineHistory() {
         var session = DiscoverySession()
         session.resume(at: 0)
@@ -172,7 +184,7 @@ struct DiscoverySessionTests {
         #expect(session.records[old.id]?.isIgnored == true)
     }
 
-    @Test func testPendingNameAlertWaitsForRecoveryBaselineToComplete() {
+    @Test func testInterruptionConsumesPendingDelayedNameAlert() {
         var session = DiscoverySession()
         session.resume(at: 0)
         let anonymous = DiscoveredDevice(id: device("late-name").id)
@@ -183,7 +195,8 @@ struct DiscoverySessionTests {
         session.resume(at: 100)
         #expect(session.discover(device("late-name"), at: 101) == false)
         #expect(!(session.baselineIsComplete))
-        #expect(session.discover(device("late-name"), at: 110) == true)
+        #expect(session.discover(device("late-name"), at: 110) == false)
+        #expect(session.records[anonymous.id]?.wasAlerted == true)
     }
 
     @Test func testRepeatedResumeDoesNotResetBaselineClock() {

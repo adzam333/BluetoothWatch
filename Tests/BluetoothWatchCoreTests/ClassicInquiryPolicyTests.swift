@@ -43,6 +43,18 @@ struct ClassicInquiryPolicyTests {
         #expect(policy.readiness == .waiting)
     }
 
+    @Test func synchronousStartFailureResetsPriorClassicConfirmation() {
+        var policy = ClassicInquiryPolicy()
+        policy.beginInquiry()
+        policy.observe(.result)
+        #expect(policy.isClassicConfirmed)
+
+        policy.beginInquiry()
+        policy.reset()
+        #expect(policy.readiness == .waiting)
+        #expect(!policy.isClassicConfirmed)
+    }
+
     @Test func observedCycleEndAfterLiveContinues() {
         var policy = ClassicInquiryPolicy()
         policy.beginInquiry()

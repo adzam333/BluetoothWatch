@@ -148,6 +148,7 @@ final class BluetoothDiscovery: NSObject {
         guard result == kIOReturnSuccess else {
             activeInquiry = nil
             activeInquiryGeneration = nil
+            inquiryPolicy.reset()
             central?.stopScan()
             setRunning(
                 false,

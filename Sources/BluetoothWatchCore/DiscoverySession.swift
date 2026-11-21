@@ -41,13 +41,16 @@ public struct DiscoverySession {
 
     public mutating func interrupt(at now: TimeInterval) {
         pause(at: now)
+        for id in Array(records.keys) {
+            records[id]?.wasAlerted = true
+        }
         baselineIsComplete = false
         remainingBaseline = Self.baselineDuration
         baselineStartedAt = nil
     }
 
-    /// Returns true at most once per post-baseline identity: the first time it is observed
-    /// while alert-eligible (Classic, or BLE with a name, which may arrive in a later update).
+    /// Returns true once for an alert-eligible post-baseline identity. Unused opportunities are
+    /// discarded when scanning is interrupted or the identity is ignored.
     @discardableResult
     public mutating func discover(_ device: DiscoveredDevice, at now: TimeInterval) -> Bool {
         guard isScanning else { return false }
@@ -74,7 +77,10 @@ public struct DiscoverySession {
     }
 
     public mutating func setIgnored(_ ignored: Bool, for id: DeviceIdentity) {
-        records[id]?.isIgnored = ignored
+        guard var record = records[id] else { return }
+        record.isIgnored = ignored
+        if ignored { record.wasAlerted = true }
+        records[id] = record
     }
 
     private func elapsedBaseline(at now: TimeInterval) -> TimeInterval {
