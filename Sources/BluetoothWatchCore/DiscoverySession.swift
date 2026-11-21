@@ -46,25 +46,31 @@ public struct DiscoverySession {
         baselineStartedAt = nil
     }
 
-    /// Returns true only for the first observation of a post-baseline identity.
+    /// Returns true at most once per post-baseline identity: the first time it is observed
+    /// while alert-eligible (Classic, or BLE with a name, which may arrive in a later update).
     @discardableResult
     public mutating func discover(_ device: DiscoveredDevice, at now: TimeInterval) -> Bool {
         guard isScanning else { return false }
         advance(to: now)
-        if var record = records[device.id] {
-            if let name = device.name, !name.isEmpty { record.device.name = name }
+        var record: DeviceRecord
+        if let existing = records[device.id] {
+            record = existing
+            if device.hasName { record.device.name = device.name }
             if let rssi = device.rssi { record.device.rssi = rssi }
             record.lastSeen = now
-            records[device.id] = record
-            return false
+        } else {
+            record = DeviceRecord(
+                device: device,
+                origin: baselineIsComplete ? .newlyDiscovered : .baseline,
+                firstSeen: now,
+                lastSeen: now
+            )
         }
-        records[device.id] = DeviceRecord(
-            device: device,
-            origin: baselineIsComplete ? .newlyDiscovered : .baseline,
-            firstSeen: now,
-            lastSeen: now
-        )
-        return baselineIsComplete
+        let shouldAlert = record.origin == .newlyDiscovered && !record.wasAlerted
+            && !record.isIgnored && record.device.isAlertEligible
+        if shouldAlert { record.wasAlerted = true }
+        records[device.id] = record
+        return shouldAlert
     }
 
     public mutating func setIgnored(_ ignored: Bool, for id: DeviceIdentity) {

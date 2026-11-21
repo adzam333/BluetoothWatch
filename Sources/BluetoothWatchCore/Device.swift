@@ -36,11 +36,19 @@ public struct DiscoveredDevice: Identifiable, Equatable, Sendable {
         self.rssi = rssi
     }
 
+    public var hasName: Bool {
+        guard let name else { return false }
+        return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     public var displayName: String {
-        guard let name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return "Unnamed Bluetooth device"
-        }
+        guard hasName, let name else { return "Unnamed Bluetooth device" }
         return name
+    }
+
+    /// Anonymous BLE advertisers (often rotating private addresses) are listed but do not alert.
+    public var isAlertEligible: Bool {
+        id.transport == .classic || hasName
     }
 }
 
@@ -52,4 +60,5 @@ public struct DeviceRecord: Identifiable, Equatable {
     public let firstSeen: TimeInterval
     public var lastSeen: TimeInterval
     public var isIgnored = false
+    public var wasAlerted = false
 }

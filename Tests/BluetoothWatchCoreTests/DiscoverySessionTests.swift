@@ -1,7 +1,7 @@
-import XCTest
+import Testing
 @testable import BluetoothWatchCore
 
-final class DiscoverySessionTests: XCTestCase {
+struct DiscoverySessionTests {
     private func device(_ identifier: String, name: String = "Mouse") -> DiscoveredDevice {
         DiscoveredDevice(
             id: DeviceIdentity(transport: .lowEnergy, identifier: identifier),
@@ -9,53 +9,85 @@ final class DiscoverySessionTests: XCTestCase {
         )
     }
 
-    func testStartupDevicesStaySilentWhenTheyReturn() {
+    @Test func testStartupDevicesStaySilentWhenTheyReturn() {
         var session = DiscoverySession()
         session.resume(at: 100)
         let mouse = device("a")
-        XCTAssertFalse(session.discover(mouse, at: 101))
-        XCTAssertFalse(session.discover(mouse, at: 150))
-        XCTAssertEqual(session.records[mouse.id]?.origin, .baseline)
-        XCTAssertTrue(session.baselineIsComplete)
+        #expect(session.discover(mouse, at: 101) == false)
+        #expect(session.discover(mouse, at: 150) == false)
+        #expect(session.records[mouse.id]?.origin == .baseline)
+        #expect(session.baselineIsComplete)
     }
 
-    func testExactlyTenSecondsDefinesTheBoundaryWithoutTimerTick() {
+    @Test func testExactlyTenSecondsDefinesTheBoundaryWithoutTimerTick() {
         var session = DiscoverySession()
         session.resume(at: 100)
-        XCTAssertFalse(session.discover(device("before"), at: 109.999))
-        XCTAssertTrue(session.discover(device("at"), at: 110))
-        XCTAssertTrue(session.discover(device("after"), at: 110.001))
-        XCTAssertEqual(session.records[device("before").id]?.origin, .baseline)
-        XCTAssertEqual(session.records[device("at").id]?.origin, .newlyDiscovered)
-        XCTAssertEqual(session.baselineSecondsRemaining(at: 110), 0)
+        #expect(session.discover(device("before"), at: 109.999) == false)
+        #expect(session.discover(device("at"), at: 110) == true)
+        #expect(session.discover(device("after"), at: 110.001) == true)
+        #expect(session.records[device("before").id]?.origin == .baseline)
+        #expect(session.records[device("at").id]?.origin == .newlyDiscovered)
+        #expect(session.baselineSecondsRemaining(at: 110) == 0)
     }
 
-    func testNewDeviceAlertsOnceAndUpdatesItsDetails() {
+    @Test func testNewDeviceAlertsOnceAndUpdatesItsDetails() {
         var session = DiscoverySession()
         session.resume(at: 0)
         let unnamed = DiscoveredDevice(id: device("a").id, rssi: -70)
-        XCTAssertTrue(session.discover(unnamed, at: 11))
+        #expect(session.discover(unnamed, at: 11) == false)
         let named = DiscoveredDevice(id: unnamed.id, name: "Travel Mouse", rssi: -40)
-        XCTAssertFalse(session.discover(named, at: 12))
-        XCTAssertEqual(session.records[unnamed.id]?.device.name, "Travel Mouse")
-        XCTAssertEqual(session.records[unnamed.id]?.device.rssi, -40)
-        XCTAssertEqual(session.records[unnamed.id]?.firstSeen, 11)
-        XCTAssertEqual(session.records[unnamed.id]?.lastSeen, 12)
+        #expect(session.discover(named, at: 12) == true)
+        #expect(session.discover(named, at: 13) == false)
+        #expect(session.discover(unnamed, at: 14) == false)
+        #expect(session.records[unnamed.id]?.device.name == "Travel Mouse")
+        #expect(session.records[unnamed.id]?.device.rssi == -70)
+        #expect(session.records[unnamed.id]?.firstSeen == 11)
+        #expect(session.records[unnamed.id]?.lastSeen == 14)
     }
 
-    func testEqualNamesDoNotMergeDifferentDevicesOrTransports() {
+    @Test func testAnonymousBLEIsListedButNeverAlerts() {
         var session = DiscoverySession()
         session.resume(at: 0)
-        XCTAssertTrue(session.discover(device("a"), at: 10))
-        XCTAssertTrue(session.discover(device("b"), at: 10))
+        let anonymous = device("rotating", name: "  ")
+        #expect(session.discover(anonymous, at: 11) == false)
+        #expect(session.discover(anonymous, at: 30) == false)
+        #expect(session.records[anonymous.id]?.origin == .newlyDiscovered)
+    }
+
+    @Test func testUnnamedClassicStillAlerts() {
+        var session = DiscoverySession()
+        session.resume(at: 0)
+        let classic = DiscoveredDevice(id: DeviceIdentity(transport: .classic, identifier: "aa-bb-cc-dd-ee-ff"))
+        #expect(session.discover(classic, at: 11) == true)
+        #expect(session.discover(classic, at: 12) == false)
+    }
+
+    @Test func testBaselineOrIgnoredDevicesDoNotAlertWhenNameArrives() {
+        var session = DiscoverySession()
+        session.resume(at: 0)
+        let early = DiscoveredDevice(id: device("early").id)
+        #expect(session.discover(early, at: 1) == false)
+        #expect(session.discover(device("early"), at: 20) == false)
+
+        let hidden = DiscoveredDevice(id: device("hidden").id)
+        #expect(session.discover(hidden, at: 21) == false)
+        session.setIgnored(true, for: hidden.id)
+        #expect(session.discover(device("hidden"), at: 22) == false)
+    }
+
+    @Test func testEqualNamesDoNotMergeDifferentDevicesOrTransports() {
+        var session = DiscoverySession()
+        session.resume(at: 0)
+        #expect(session.discover(device("a"), at: 10) == true)
+        #expect(session.discover(device("b"), at: 10) == true)
         let classic = DiscoveredDevice(
             id: DeviceIdentity(transport: .classic, identifier: "a"), name: "Mouse"
         )
-        XCTAssertTrue(session.discover(classic, at: 10))
-        XCTAssertEqual(session.records.count, 3)
+        #expect(session.discover(classic, at: 10) == true)
+        #expect(session.records.count == 3)
     }
 
-    func testClassicAddressFormatsReferToOneDeviceWithoutChangingBLEIdentifiers() {
+    @Test func testClassicAddressFormatsReferToOneDeviceWithoutChangingBLEIdentifiers() {
         var session = DiscoverySession()
         session.resume(at: 0)
         let dashed = DiscoveredDevice(
@@ -64,86 +96,86 @@ final class DiscoverySessionTests: XCTestCase {
         let colon = DiscoveredDevice(
             id: DeviceIdentity(transport: .classic, identifier: "aa:bb:cc:dd:ee:ff")
         )
-        XCTAssertTrue(session.discover(dashed, at: 11))
-        XCTAssertFalse(session.discover(colon, at: 12))
-        XCTAssertEqual(session.records.count, 1)
-        XCTAssertEqual(dashed.id.identifier, "aa:bb:cc:dd:ee:ff")
+        #expect(session.discover(dashed, at: 11) == true)
+        #expect(session.discover(colon, at: 12) == false)
+        #expect(session.records.count == 1)
+        #expect(dashed.id.identifier == "aa:bb:cc:dd:ee:ff")
         let ble = DeviceIdentity(transport: .lowEnergy, identifier: "ABCD-1234")
-        XCTAssertEqual(ble.identifier, "abcd-1234")
+        #expect(ble.identifier == "abcd-1234")
     }
 
-    func testBaselineCountsOnlyActiveTimeAcrossPause() {
+    @Test func testBaselineCountsOnlyActiveTimeAcrossPause() {
         var session = DiscoverySession()
         session.resume(at: 20)
         session.pause(at: 24)
-        XCTAssertEqual(session.baselineSecondsRemaining(at: 90), 6)
-        XCTAssertFalse(session.discover(device("not-scanned"), at: 50))
-        XCTAssertTrue(session.records.isEmpty)
+        #expect(session.baselineSecondsRemaining(at: 90) == 6)
+        #expect(session.discover(device("not-scanned"), at: 50) == false)
+        #expect(session.records.isEmpty)
         session.resume(at: 100)
-        XCTAssertFalse(session.discover(device("before"), at: 105.999))
-        XCTAssertTrue(session.discover(device("at"), at: 106))
+        #expect(session.discover(device("before"), at: 105.999) == false)
+        #expect(session.discover(device("at"), at: 106) == true)
     }
 
-    func testPauseAfterBaselineDoesNotCreateAnotherBaseline() {
+    @Test func testPauseAfterBaselineDoesNotCreateAnotherBaseline() {
         var session = DiscoverySession()
         session.resume(at: 0)
-        XCTAssertTrue(session.discover(device("first"), at: 11))
+        #expect(session.discover(device("first"), at: 11) == true)
         session.pause(at: 12)
         session.resume(at: 100)
-        XCTAssertTrue(session.discover(device("second"), at: 100))
-        XCTAssertFalse(session.discover(device("first"), at: 101))
+        #expect(session.discover(device("second"), at: 100) == true)
+        #expect(session.discover(device("first"), at: 101) == false)
     }
 
-    func testIgnoreAndUndoNeverRealertOrEraseIdentity() {
+    @Test func testIgnoreAndUndoNeverRealertOrEraseIdentity() {
         var session = DiscoverySession()
         session.resume(at: 0)
         let mouse = device("a")
-        XCTAssertTrue(session.discover(mouse, at: 11))
+        #expect(session.discover(mouse, at: 11) == true)
         session.setIgnored(true, for: mouse.id)
-        XCTAssertTrue(session.records[mouse.id]?.isIgnored == true)
-        XCTAssertFalse(session.discover(mouse, at: 12))
-        XCTAssertTrue(session.records[mouse.id]?.isIgnored == true)
+        #expect(session.records[mouse.id]?.isIgnored == true)
+        #expect(session.discover(mouse, at: 12) == false)
+        #expect(session.records[mouse.id]?.isIgnored == true)
         session.setIgnored(false, for: mouse.id)
-        XCTAssertTrue(session.records[mouse.id]?.isIgnored == false)
-        XCTAssertFalse(session.discover(mouse, at: 13))
+        #expect(session.records[mouse.id]?.isIgnored == false)
+        #expect(session.discover(mouse, at: 13) == false)
     }
 
-    func testRestartClearsIgnoredAndBaselineHistory() {
+    @Test func testRestartClearsIgnoredAndBaselineHistory() {
         var session = DiscoverySession()
         session.resume(at: 0)
         let mouse = device("a")
-        XCTAssertTrue(session.discover(mouse, at: 11))
+        #expect(session.discover(mouse, at: 11) == true)
         session.setIgnored(true, for: mouse.id)
         session = DiscoverySession()
-        XCTAssertTrue(session.records.isEmpty)
-        XCTAssertFalse(session.baselineIsComplete)
+        #expect(session.records.isEmpty)
+        #expect(!(session.baselineIsComplete))
         session.resume(at: 100)
-        XCTAssertFalse(session.discover(mouse, at: 101))
-        XCTAssertTrue(session.records[mouse.id]?.isIgnored == false)
-        XCTAssertEqual(session.records[mouse.id]?.origin, .baseline)
+        #expect(session.discover(mouse, at: 101) == false)
+        #expect(session.records[mouse.id]?.isIgnored == false)
+        #expect(session.records[mouse.id]?.origin == .baseline)
     }
 
-    func testInterruptionRebaselinesButPreservesSeenExclusions() {
+    @Test func testInterruptionRebaselinesButPreservesSeenExclusions() {
         var session = DiscoverySession()
         session.resume(at: 0)
         let old = device("old")
-        XCTAssertTrue(session.discover(old, at: 11))
+        #expect(session.discover(old, at: 11) == true)
         session.setIgnored(true, for: old.id)
         session.interrupt(at: 20)
-        XCTAssertFalse(session.isScanning)
-        XCTAssertFalse(session.baselineIsComplete)
+        #expect(!(session.isScanning))
+        #expect(!(session.baselineIsComplete))
         session.resume(at: 50)
-        XCTAssertFalse(session.discover(device("during-gap"), at: 51))
-        XCTAssertFalse(session.discover(old, at: 61))
-        XCTAssertFalse(session.discover(device("during-gap"), at: 62))
-        XCTAssertTrue(session.discover(device("new"), at: 63))
-        XCTAssertTrue(session.records[old.id]?.isIgnored == true)
+        #expect(session.discover(device("during-gap"), at: 51) == false)
+        #expect(session.discover(old, at: 61) == false)
+        #expect(session.discover(device("during-gap"), at: 62) == false)
+        #expect(session.discover(device("new"), at: 63) == true)
+        #expect(session.records[old.id]?.isIgnored == true)
     }
 
-    func testRepeatedResumeDoesNotResetBaselineClock() {
+    @Test func testRepeatedResumeDoesNotResetBaselineClock() {
         var session = DiscoverySession()
         session.resume(at: 0)
         session.resume(at: 9)
-        XCTAssertTrue(session.discover(device("a"), at: 10))
+        #expect(session.discover(device("a"), at: 10) == true)
     }
 }

@@ -26,12 +26,21 @@ fi
 xcrun swift build --package-path "$ROOT" --configuration release --product BluetoothWatch
 BIN_DIR="$(xcrun swift build --package-path "$ROOT" --configuration release --show-bin-path)"
 APP="$ROOT/build/Bluetooth Watch.app"
-mkdir -p "$APP/Contents/MacOS"
-cp "$BIN_DIR/BluetoothWatch" "$APP/Contents/MacOS/BluetoothWatch"
-cp "$ROOT/Packaging/Info.plist" "$APP/Contents/Info.plist"
-/usr/bin/plutil -lint "$APP/Contents/Info.plist"
-/usr/bin/codesign --force --sign "${CODE_SIGN_IDENTITY:--}" --timestamp=none "$APP"
-/usr/bin/codesign --verify --strict "$APP"
+# Assemble and sign outside the checkout: synced folders (e.g. iCloud Desktop)
+# can re-attach Finder metadata at any time, which codesign rejects.
+STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/bluetoothwatch-build.XXXXXX")"
+trap 'rm -rf "$STAGE_DIR"' EXIT
+STAGED="$STAGE_DIR/Bluetooth Watch.app"
+mkdir -p "$STAGED/Contents/MacOS"
+cp "$BIN_DIR/BluetoothWatch" "$STAGED/Contents/MacOS/BluetoothWatch"
+cp "$ROOT/Packaging/Info.plist" "$STAGED/Contents/Info.plist"
+/usr/bin/plutil -lint "$STAGED/Contents/Info.plist"
+/usr/bin/xattr -cr "$STAGED"
+/usr/bin/codesign --force --sign "${CODE_SIGN_IDENTITY:--}" --timestamp=none "$STAGED"
+/usr/bin/codesign --verify --strict "$STAGED"
+rm -rf "$APP"
+mkdir -p "$ROOT/build"
+/usr/bin/ditto --noextattr "$STAGED" "$APP"
 echo "Built: $APP"
 
 if [[ "$INSTALL" == true ]]; then
@@ -41,7 +50,9 @@ if [[ "$INSTALL" == true ]]; then
     fi
     DESTINATION="$HOME/Applications/Bluetooth Watch.app"
     mkdir -p "$HOME/Applications"
-    /usr/bin/ditto "$APP" "$DESTINATION"
+    rm -rf "$DESTINATION"
+    /usr/bin/ditto --noextattr "$STAGED" "$DESTINATION"
+    /usr/bin/xattr -cr "$DESTINATION"
     /usr/bin/codesign --verify --strict "$DESTINATION"
     echo "Installed: $DESTINATION"
     /usr/bin/open "$DESTINATION"

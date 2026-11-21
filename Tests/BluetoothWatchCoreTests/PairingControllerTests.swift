@@ -1,4 +1,4 @@
-import XCTest
+import Testing
 @testable import BluetoothWatchCore
 
 @MainActor
@@ -16,30 +16,30 @@ private final class FakePairingDriver: PairingDriver {
     func cancelPairing() { cancellations += 1 }
 }
 
-final class PairingControllerTests: XCTestCase {
+struct PairingControllerTests {
     private func device(_ id: String, transport: BluetoothTransport = .classic) -> DiscoveredDevice {
         DiscoveredDevice(id: DeviceIdentity(transport: transport, identifier: id), name: "Mouse")
     }
 
-    func testPairRoutesExactIdentityAndWaitsForActualSuccess() async {
+    @Test func testPairRoutesExactIdentityAndWaitsForActualSuccess() async {
         await MainActor.run {
             let driver = FakePairingDriver()
             let controller = PairingController(driver: driver, openSettings: { _ in
-                XCTFail("Supported Classic device must use direct pairing")
+                Issue.record("Supported Classic device must use direct pairing")
                 return false
             })
             let mouse = device("aa:bb:cc:dd:ee:ff")
-            XCTAssertTrue(controller.pair(mouse))
-            XCTAssertEqual(driver.devices, [mouse])
-            XCTAssertEqual(controller.statuses[mouse.id], .pairing)
-            XCTAssertEqual(controller.activeDeviceID, mouse.id)
+            #expect(controller.pair(mouse))
+            #expect(driver.devices == [mouse])
+            #expect(controller.statuses[mouse.id] == .pairing)
+            #expect(controller.activeDeviceID == mouse.id)
             driver.completions[0](.paired)
-            XCTAssertEqual(controller.statuses[mouse.id], .paired)
-            XCTAssertNil(controller.activeDeviceID)
+            #expect(controller.statuses[mouse.id] == .paired)
+            #expect(controller.activeDeviceID == nil)
         }
     }
 
-    func testBLEAlwaysOpensSettingsAndNeverClaimsPaired() async {
+    @Test func testBLEAlwaysOpensSettingsAndNeverClaimsPaired() async {
         await MainActor.run {
             let driver = FakePairingDriver()
             var opened: [DeviceIdentity] = []
@@ -48,15 +48,15 @@ final class PairingControllerTests: XCTestCase {
                 return true
             }
             let mouse = device("ble-uuid", transport: .lowEnergy)
-            XCTAssertTrue(controller.pair(mouse))
-            XCTAssertEqual(opened, [mouse.id])
-            XCTAssertTrue(driver.devices.isEmpty)
-            XCTAssertEqual(controller.statuses[mouse.id], .settingsOpened)
-            XCTAssertNil(controller.activeDeviceID)
+            #expect(controller.pair(mouse))
+            #expect(opened == [mouse.id])
+            #expect(driver.devices.isEmpty)
+            #expect(controller.statuses[mouse.id] == .settingsOpened)
+            #expect(controller.activeDeviceID == nil)
         }
     }
 
-    func testUnsupportedClassicFallsBackAndReportsSettingsFailure() async {
+    @Test func testUnsupportedClassicFallsBackAndReportsSettingsFailure() async {
         await MainActor.run {
             let driver = FakePairingDriver()
             driver.supported = false
@@ -66,62 +66,62 @@ final class PairingControllerTests: XCTestCase {
                 return false
             }
             let mouse = device("aa")
-            XCTAssertTrue(controller.pair(mouse))
-            XCTAssertEqual(target, mouse)
-            XCTAssertTrue(driver.devices.isEmpty)
-            XCTAssertEqual(controller.statuses[mouse.id], .failed("Could not open Bluetooth settings."))
+            #expect(controller.pair(mouse))
+            #expect(target == mouse)
+            #expect(driver.devices.isEmpty)
+            #expect(controller.statuses[mouse.id] == .failed("Could not open Bluetooth settings."))
         }
     }
 
-    func testDuplicateAndConcurrentAttemptsAreRejected() async {
+    @Test func testDuplicateAndConcurrentAttemptsAreRejected() async {
         await MainActor.run {
             let driver = FakePairingDriver()
             let controller = PairingController(driver: driver, openSettings: { _ in true })
             let first = device("a")
             let sameNameOtherDevice = device("b")
-            XCTAssertTrue(controller.pair(first))
-            XCTAssertFalse(controller.pair(first))
-            XCTAssertFalse(controller.pair(sameNameOtherDevice))
-            XCTAssertEqual(driver.devices, [first])
-            XCTAssertNil(controller.statuses[sameNameOtherDevice.id])
+            #expect(controller.pair(first))
+            #expect(!(controller.pair(first)))
+            #expect(!(controller.pair(sameNameOtherDevice)))
+            #expect(driver.devices == [first])
+            #expect(controller.statuses[sameNameOtherDevice.id] == nil)
         }
     }
 
-    func testFailureIsReportedWithoutAutomaticRetryOrSettingsHandoff() async {
+    @Test func testFailureIsReportedWithoutAutomaticRetryOrSettingsHandoff() async {
         await MainActor.run {
             let driver = FakePairingDriver()
             let controller = PairingController(driver: driver, openSettings: { _ in
-                XCTFail("Failures must be shown before an explicit settings action")
+                Issue.record("Failures must be shown before an explicit settings action")
                 return true
             })
             let mouse = device("a")
-            XCTAssertTrue(controller.pair(mouse))
+            #expect(controller.pair(mouse))
             driver.completions[0](.failed("Device is no longer discoverable"))
-            XCTAssertEqual(controller.statuses[mouse.id], .failed("Device is no longer discoverable"))
-            XCTAssertNil(controller.activeDeviceID)
-            XCTAssertEqual(driver.devices.count, 1)
+            #expect(controller.statuses[mouse.id] == .failed("Device is no longer discoverable"))
+            #expect(controller.activeDeviceID == nil)
+            #expect(driver.devices.count == 1)
         }
     }
 
-    func testCancellationStopsDriverAndDiscardsStaleCompletion() async {
+    @Test func testCancellationStopsDriverAndDiscardsStaleCompletion() async {
         await MainActor.run {
             let driver = FakePairingDriver()
             let controller = PairingController(driver: driver, openSettings: { _ in true })
             let first = device("a")
             let second = device("b")
-            XCTAssertTrue(controller.pair(first))
+            #expect(controller.pair(first))
             controller.cancel()
-            XCTAssertEqual(driver.cancellations, 1)
-            XCTAssertEqual(controller.statuses[first.id], .cancelled)
-            XCTAssertNil(controller.activeDeviceID)
-            XCTAssertTrue(controller.pair(second))
+            #expect(driver.cancellations == 1)
+            #expect(controller.statuses[first.id] == .cancelled)
+            #expect(controller.activeDeviceID == nil)
+            #expect(controller.pair(second))
             driver.completions[0](.paired)
-            XCTAssertEqual(controller.statuses[first.id], .cancelled)
-            XCTAssertEqual(controller.activeDeviceID, second.id)
-            XCTAssertEqual(controller.statuses[second.id], .pairing)
+            #expect(controller.statuses[first.id] == .cancelled)
+            #expect(controller.activeDeviceID == second.id)
+            #expect(controller.statuses[second.id] == .pairing)
             driver.completions[1](.cancelled)
-            XCTAssertEqual(controller.statuses[second.id], .cancelled)
-            XCTAssertNil(controller.activeDeviceID)
+            #expect(controller.statuses[second.id] == .cancelled)
+            #expect(controller.activeDeviceID == nil)
         }
     }
 }
