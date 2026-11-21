@@ -66,7 +66,7 @@ public struct DiscoverySession {
                 lastSeen: now
             )
         }
-        let shouldAlert = record.origin == .newlyDiscovered && !record.wasAlerted
+        let shouldAlert = baselineIsComplete && record.origin == .newlyDiscovered && !record.wasAlerted
             && !record.isIgnored && record.device.isAlertEligible
         if shouldAlert { record.wasAlerted = true }
         records[device.id] = record

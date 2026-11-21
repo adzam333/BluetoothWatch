@@ -172,6 +172,20 @@ struct DiscoverySessionTests {
         #expect(session.records[old.id]?.isIgnored == true)
     }
 
+    @Test func testPendingNameAlertWaitsForRecoveryBaselineToComplete() {
+        var session = DiscoverySession()
+        session.resume(at: 0)
+        let anonymous = DiscoveredDevice(id: device("late-name").id)
+        #expect(session.discover(anonymous, at: 11) == false)
+        #expect(session.records[anonymous.id]?.origin == .newlyDiscovered)
+
+        session.interrupt(at: 12)
+        session.resume(at: 100)
+        #expect(session.discover(device("late-name"), at: 101) == false)
+        #expect(!(session.baselineIsComplete))
+        #expect(session.discover(device("late-name"), at: 110) == true)
+    }
+
     @Test func testRepeatedResumeDoesNotResetBaselineClock() {
         var session = DiscoverySession()
         session.resume(at: 0)
