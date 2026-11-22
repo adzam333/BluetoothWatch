@@ -41,12 +41,17 @@ No administrator access, cloud service, or third-party packages are needed.
   they disappear and return.
 - A device first observed after the baseline triggers at most one alert per
   identity per run. Expand the macOS notification to reveal **Pair** and
-  **Ignore**; clicking the alert opens the menu bar list at that device, which has the same
-  buttons.
+  **Ignore**; clicking the alert opens the menu bar list at that device if it
+  has a name, with the same buttons.
+- The list shows only devices with nonempty names, including in the Ignored
+  section. Unnamed devices remain in the discovery history and appear if a
+  name is subsequently reported.
 - Only Bluetooth Classic devices and Bluetooth LE devices that report a name
   alert. Anonymous BLE advertisers (often phones, watches and trackers rotating
-  private addresses) are still listed under **New this run** but never notify. A
-  BLE device first seen without a name alerts once if a name arrives later.
+  private addresses) do not appear in the list or notify. A BLE device first
+  seen without a name alerts once if a name arrives later, unless its discovery
+  history excludes the alert. Unnamed Classic devices can still notify; use the
+  notification actions or Bluetooth Settings until they report a name.
 - **Pair** attempts public-API pairing for supported Bluetooth Classic devices.
   Complete any PIN/passkey or confirmation prompt.
 - **Pair** on a Bluetooth LE device is experimental. macOS has no public API to

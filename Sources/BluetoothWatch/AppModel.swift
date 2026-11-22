@@ -39,8 +39,10 @@ final class AppModel: ObservableObject {
     private var started = false
     private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
-    var visibleRecords: [DeviceRecord] { records.filter { !$0.isIgnored } }
-    var ignoredRecords: [DeviceRecord] { records.filter(\.isIgnored) }
+    var listSections: DeviceListSections { DeviceListSections(records: records) }
+    var selectedUnnamedRecord: DeviceRecord? {
+        records.first { $0.id == selectedDeviceID && !$0.device.hasName }
+    }
 
     var status: String {
         if isPaused { return "Paused" }

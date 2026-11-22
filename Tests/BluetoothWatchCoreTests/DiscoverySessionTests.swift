@@ -45,7 +45,7 @@ struct DiscoverySessionTests {
         #expect(session.records[unnamed.id]?.lastSeen == 14)
     }
 
-    @Test func testAnonymousBLEIsListedButNeverAlerts() {
+    @Test func testAnonymousBLEIsRecordedButNeverAlerts() {
         var session = DiscoverySession()
         session.resume(at: 0)
         let anonymous = device("rotating", name: "  ")

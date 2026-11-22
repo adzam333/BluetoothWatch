@@ -46,7 +46,7 @@ public struct DiscoveredDevice: Identifiable, Equatable, Sendable {
         return name
     }
 
-    /// Anonymous BLE advertisers (often rotating private addresses) are listed but do not alert.
+    /// Anonymous BLE advertisers (often rotating private addresses) do not alert.
     public var isAlertEligible: Bool {
         id.transport == .classic || hasName
     }
@@ -61,4 +61,19 @@ public struct DeviceRecord: Identifiable, Equatable {
     public var lastSeen: TimeInterval
     public var isIgnored = false
     public var wasAlerted = false
+}
+
+public struct DeviceListSections {
+    public private(set) var visible: [DeviceRecord] = []
+    public private(set) var ignored: [DeviceRecord] = []
+
+    public init(records: [DeviceRecord]) {
+        for record in records where record.device.hasName {
+            if record.isIgnored {
+                ignored.append(record)
+            } else {
+                visible.append(record)
+            }
+        }
+    }
 }

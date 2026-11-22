@@ -8,6 +8,7 @@ struct DeviceListView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
+        let sections = model.listSections
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("Bluetooth Watch", systemImage: "dot.radiowaves.left.and.right").font(.headline)
@@ -39,20 +40,33 @@ struct DeviceListView: View {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange).textSelection(.enabled)
             }
+            if let record = model.selectedUnnamedRecord {
+                Text("This device has no name, so it is hidden from the list. Use its notification actions or Bluetooth Settings.")
+                    .font(.callout)
+                if let pairingStatus = model.pairingStatuses[record.id] {
+                    Text(pairingStatus.message).font(.callout).textSelection(.enabled)
+                }
+                HStack {
+                    if model.activePairingID == record.id {
+                        Button("Cancel Pairing") { model.cancelPairing() }
+                    }
+                    Button("Bluetooth Settings") { model.openSettings(for: record.id) }
+                }
+            }
             ScrollViewReader { proxy in
                 List {
                     Section("Discovered this run") {
-                        if model.visibleRecords.isEmpty {
-                            Text("No devices discovered yet. Put a device in pairing mode to make it discoverable.")
+                        if sections.visible.isEmpty {
+                            Text("No named devices to show. Put a device in pairing mode to make it discoverable.")
                                 .foregroundStyle(.secondary)
                         }
-                        ForEach(model.visibleRecords) { record in
+                        ForEach(sections.visible) { record in
                             DeviceRow(model: model, record: record).id(record.id)
                         }
                     }
-                    if !model.ignoredRecords.isEmpty {
+                    if !sections.ignored.isEmpty {
                         Section("Ignored until the app restarts") {
-                            ForEach(model.ignoredRecords) { record in
+                            ForEach(sections.ignored) { record in
                                 DeviceRow(model: model, record: record).id(record.id)
                             }
                         }
