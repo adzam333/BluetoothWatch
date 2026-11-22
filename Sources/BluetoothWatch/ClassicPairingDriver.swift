@@ -11,6 +11,7 @@ final class ClassicPairingDriver: NSObject, PairingDriver {
     private var timeoutTask: Task<Void, Never>?
     private var deviceLabel = "Bluetooth device"
     private var activePrompt: NSAlert?
+    private var promptResponse: ((NSApplication.ModalResponse) -> Void)?
 
     func canPair(_ device: DiscoveredDevice) -> Bool {
         device.id.transport == .classic && Self.isBluetoothAddress(device.id.identifier)
@@ -93,7 +94,7 @@ final class ClassicPairingDriver: NSObject, PairingDriver {
                 self.finish(.cancelled, stopPair: true)
             }
         }) else {
-            finish(.failed("A visible BluetoothWatch window is required to confirm pairing. Open the app and retry, or use Bluetooth settings."), stopPair: true)
+            finish(.failed("Could not show the pairing confirmation. Retry, or use Bluetooth settings."), stopPair: true)
             return
         }
     }
@@ -133,7 +134,7 @@ final class ClassicPairingDriver: NSObject, PairingDriver {
             }
             pair.replyPINCode(bytes.count, pinCode: &pinCode)
         }) else {
-            finish(.failed("A visible BluetoothWatch window is required to enter the PIN. Open the app and retry, or use Bluetooth settings."), stopPair: true)
+            finish(.failed("Could not show the PIN prompt. Retry, or use Bluetooth settings."), stopPair: true)
             return
         }
     }
@@ -148,33 +149,52 @@ final class ClassicPairingDriver: NSObject, PairingDriver {
         guard present(alert, for: activePair, response: { [weak self] _ in
             self?.activePrompt = nil
         }) else {
-            finish(.failed("A visible BluetoothWatch window is required to display the passkey. Open the app and retry, or use Bluetooth settings."), stopPair: true)
+            finish(.failed("Could not show the passkey. Retry, or use Bluetooth settings."), stopPair: true)
             return
         }
     }
 
+    /// Shows the prompt as a standalone floating dialog, since the app has no window.
+    /// It is not run modally, so Bluetooth callbacks and the timeout keep working.
     private func present(
         _ alert: NSAlert,
         for pair: IOBluetoothDevicePair?,
         response: @escaping (NSApplication.ModalResponse) -> Void
     ) -> Bool {
-        guard let pair, activePair === pair,
-              let window = NSApp.mainWindow ?? NSApp.keyWindow else { return false }
-        NSApp.activate(ignoringOtherApps: true)
+        guard let pair, activePair === pair else { return false }
         dismissPrompt()
+        alert.layout()
+        for (index, button) in alert.buttons.enumerated() {
+            button.tag = NSApplication.ModalResponse.alertFirstButtonReturn.rawValue + index
+            button.target = self
+            button.action = #selector(promptButtonPressed(_:))
+        }
         activePrompt = alert
-        alert.beginSheetModal(for: window) { [weak self] result in
-            guard let self, self.activePair === pair, self.activePrompt === alert else { return }
-            self.activePrompt = nil
+        promptResponse = { [weak self] result in
+            guard let self, self.activePair === pair else { return }
             response(result)
         }
+        alert.window.level = .floating
+        alert.window.center()
+        NSApp.activate(ignoringOtherApps: true)
+        alert.window.makeKeyAndOrderFront(nil)
         return true
+    }
+
+    @objc private func promptButtonPressed(_ sender: NSButton) {
+        guard let alert = activePrompt, sender.window === alert.window else { return }
+        let callback = promptResponse
+        activePrompt = nil
+        promptResponse = nil
+        alert.window.orderOut(nil)
+        callback?(NSApplication.ModalResponse(rawValue: sender.tag))
     }
 
     private func dismissPrompt() {
         guard let alert = activePrompt else { return }
         activePrompt = nil
-        alert.window.sheetParent?.endSheet(alert.window, returnCode: .abort)
+        promptResponse = nil
+        alert.window.orderOut(nil)
     }
 
     private static func isBluetoothAddress(_ value: String) -> Bool {

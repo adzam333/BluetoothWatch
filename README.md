@@ -16,7 +16,8 @@ bash scripts/build-app.sh --install
 This builds the native app, signs it locally, installs it in
 `~/Applications/Bluetooth Watch.app`, and opens it. Allow Bluetooth and
 notifications when macOS asks. The app lives in the menu bar, not the Dock.
-Enable **Launch at login** in its menu or window if desired; macOS may also
+Click its menu bar icon to see discovered devices. Enable **Launch at login**
+there if desired; macOS may also
 require approval under System Settings > General > Login Items & Extensions.
 Keep the app at its installed path after registering launch at login.
 
@@ -40,7 +41,8 @@ No administrator access, cloud service, or third-party packages are needed.
   they disappear and return.
 - A device first observed after the baseline triggers at most one alert per
   identity per run. Expand the macOS notification to reveal **Pair** and
-  **Ignore**; those buttons are also in **Show Devices**.
+  **Ignore**; clicking the alert opens the menu bar list at that device, which has the same
+  buttons.
 - Only Bluetooth Classic devices and Bluetooth LE devices that report a name
   alert. Anonymous BLE advertisers (often phones, watches and trackers rotating
   private addresses) are still listed under **New this run** but never notify. A
@@ -68,7 +70,7 @@ No administrator access, cloud service, or third-party packages are needed.
   the baseline/history.
 - Sleep, Bluetooth interruptions, and recovery require another quiet baseline;
   previously seen identities remain excluded. Errors and permissions are shown
-  in the window rather than silently pretending to scan.
+  in the menu bar list rather than silently pretending to scan.
 - Device observations and ignored identities are in memory only. Restarting
   clears them and begins another 10-second baseline. No discovery telemetry or
   device list is uploaded or written to disk by this app.
@@ -142,7 +144,7 @@ subsystem `local.bluetoothwatch.app`, or in Terminal:
 ```
 
 These local diagnostic logs do not include device names or identifiers. The
-status message in **Show Devices** wraps to display the full error and can be
+status message in the menu bar list wraps to display the full error and can be
 selected and copied.
 
 Before relying on it, check on your Mac:
