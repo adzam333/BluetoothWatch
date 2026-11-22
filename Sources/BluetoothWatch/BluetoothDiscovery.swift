@@ -130,6 +130,7 @@ final class BluetoothDiscovery: NSObject {
         guard wantsMonitoring, central?.state == .poweredOn, activeInquiry == nil else { return }
         guard let inquiry = IOBluetoothDeviceInquiry(delegate: self) else {
             central?.stopScan()
+            inquiryPolicy.inquiryCreationFailed()
             setRunning(
                 false,
                 message: "macOS could not create a Classic Bluetooth inquiry. Check Bluetooth permissions in System Settings, then retry."
