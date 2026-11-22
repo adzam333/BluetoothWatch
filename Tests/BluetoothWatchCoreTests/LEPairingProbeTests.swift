@@ -2,8 +2,8 @@ import Testing
 @testable import BluetoothWatchCore
 
 struct LEPairingProbeTests {
-    private func candidate(_ service: String, _ characteristic: String, readable: Bool = true) -> LEPairingProbe.Candidate {
-        LEPairingProbe.Candidate(serviceUUID: service, characteristicUUID: characteristic, isReadable: readable)
+    private func candidate(_ service: String, _ characteristic: String, readable: Bool = true, index: Int = 0) -> LEPairingProbe.Candidate {
+        LEPairingProbe.Candidate(instanceIndex: index, serviceUUID: service, characteristicUUID: characteristic, isReadable: readable)
     }
 
     @Test func testSkipsOpenServicesAndUnreadableCharacteristics() {
@@ -77,6 +77,19 @@ struct LEPairingProbeTests {
         _ = probe.start(pairedEvidence: false)
         #expect(probe.record(.notPermitted, pairedEvidence: false) == .read(candidate("FFF0", "FFF2")))
         #expect(probe.record(.otherError("x"), pairedEvidence: false) == .read(candidate("FFF0", "FFF3")))
+    }
+
+    @Test func testDuplicateUUIDsRetainDistinctCharacteristicInstances() {
+        let skipped = candidate("1800", "2A00", index: 0)
+        let first = candidate("FFF0", "FFF1", index: 1)
+        let second = candidate("FFF0", "FFF1", index: 2)
+        var probe = LEPairingProbe(candidates: [skipped, first, second])
+
+        #expect(probe.start(pairedEvidence: false) == .read(first))
+        #expect(probe.record(.success, pairedEvidence: false) == .read(second))
+        #expect(probe.record(.securityRequired, pairedEvidence: false) == .finish(
+            .failed("macOS requested pairing, but it was not completed (declined, timed out, or rejected by the device). Retry, or use Bluetooth settings.")
+        ))
     }
 
     @Test func testReadsAreBounded() {

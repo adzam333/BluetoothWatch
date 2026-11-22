@@ -97,9 +97,10 @@ final class LEPairingDriver: NSObject, PairingDriver {
     }
 
     private func beginProbe() {
-        let candidates = characteristics.compactMap { characteristic -> LEPairingProbe.Candidate? in
+        let candidates = characteristics.enumerated().compactMap { index, characteristic -> LEPairingProbe.Candidate? in
             guard let service = characteristic.service else { return nil }
             return LEPairingProbe.Candidate(
+                instanceIndex: index,
                 serviceUUID: service.uuid.uuidString,
                 characteristicUUID: characteristic.uuid.uuidString,
                 isReadable: characteristic.properties.contains(.read)
@@ -116,13 +117,11 @@ final class LEPairingDriver: NSObject, PairingDriver {
         switch step {
         case .read(let candidate):
             guard let peripheral,
-                  let characteristic = characteristics.first(where: {
-                      $0.uuid.uuidString.uppercased() == candidate.characteristicUUID
-                          && $0.service?.uuid.uuidString.uppercased() == candidate.serviceUUID
-                  }) else {
-                record(.otherError("characteristic unavailable"))
+                  characteristics.indices.contains(candidate.instanceIndex) else {
+                finish(.failed("The selected Bluetooth LE characteristic is no longer available. Retry, or use Bluetooth settings."))
                 return
             }
+            let characteristic = characteristics[candidate.instanceIndex]
             currentRead = characteristic
             peripheral.readValue(for: characteristic)
         case .finish(.settingsRequired(let reason)):

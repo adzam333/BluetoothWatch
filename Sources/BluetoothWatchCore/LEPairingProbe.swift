@@ -8,11 +8,13 @@ import Foundation
 /// pairing, so `.paired` is only reported when macOS lists a new matching paired device.
 public struct LEPairingProbe: Sendable {
     public struct Candidate: Equatable, Sendable {
+        public let instanceIndex: Int
         public let serviceUUID: String
         public let characteristicUUID: String
         public let isReadable: Bool
 
-        public init(serviceUUID: String, characteristicUUID: String, isReadable: Bool) {
+        public init(instanceIndex: Int, serviceUUID: String, characteristicUUID: String, isReadable: Bool) {
+            self.instanceIndex = instanceIndex
             self.serviceUUID = serviceUUID.uppercased()
             self.characteristicUUID = characteristicUUID.uppercased()
             self.isReadable = isReadable
