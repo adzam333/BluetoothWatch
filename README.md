@@ -45,13 +45,22 @@ rebuilds, create a self-signed code-signing certificate in Keychain Access:
    **Self Signed Root** as the identity type and **Code Signing** as the
    certificate type, then finish the assistant and save it to the login
    keychain.
-3. Confirm that macOS lists a valid code-signing identity:
+3. If `security find-identity` reports the certificate as untrusted, export
+   its public certificate from Keychain Access (**File > Export Items**) and
+   trust it for the code-signing policy only:
+
+   ```sh
+   security add-trusted-cert -r trustRoot -p codeSign \
+     -k "$HOME/Library/Keychains/login.keychain-db" /path/to/certificate.cer
+   ```
+
+4. Confirm that macOS lists a valid code-signing identity:
 
    ```sh
    security find-identity -v -p codesigning
    ```
 
-4. Build and install using the certificate's exact name:
+5. Build and install using the certificate's exact name:
 
    ```sh
    CODE_SIGN_IDENTITY="Bluetooth Watch Local Signing" bash scripts/build-app.sh --install
@@ -71,6 +80,11 @@ second app process started scanning without a Bluetooth-access error or another
 permission prompt. `security find-identity -v -p codesigning` reports the
 identity as valid. This verifies local permission persistence for this
 identity and machine only.
+
+**BLE scan CPU spot check (2026-11-22):** While the app was scanning, five
+consecutive `top` samples at five-second intervals ranged from 2.4% to 2.9%
+CPU. This is a spot measurement, not an A/B comparison with duplicate reports
+disabled; battery impact was not separately measured.
 
 ## How it behaves
 
