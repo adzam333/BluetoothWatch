@@ -64,9 +64,13 @@ previously granted access while ad-hoc signed, macOS may ask once more after
 switching identities; allow it, then rebuild with the same identity to check
 that the grant persists.
 
-**Verification on this Mac:** `security find-identity -v -p codesigning`
-currently reports zero valid identities. Stable-identity rebuilds and
-Bluetooth-permission persistence have therefore not yet been verified here.
+**Verification on this Mac (2026-11-22):** The self-signed
+**Bluetooth Watch Local Signing** identity was used for two consecutive
+builds/installs. Bluetooth access was approved after the first install; the
+second app process started scanning without a Bluetooth-access error or another
+permission prompt. `security find-identity -v -p codesigning` reports the
+identity as valid. This verifies local permission persistence for this
+identity and machine only.
 
 ## How it behaves
 
