@@ -107,6 +107,7 @@ struct DeviceListView: View {
             }
         }
         .padding(20)
+        .frame(minWidth: 520, minHeight: 440)
         .onAppear { model.refreshLoginStatus() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.refreshLoginStatus()

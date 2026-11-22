@@ -46,8 +46,17 @@ No administrator access, cloud service, or third-party packages are needed.
   private addresses) are still listed under **New this run** but never notify. A
   BLE device first seen without a name alerts once if a name arrives later.
 - **Pair** attempts public-API pairing for supported Bluetooth Classic devices.
-  Complete any PIN/passkey or confirmation prompt. Bluetooth LE and unsupported
-  devices open Bluetooth settings instead. The app selects the corresponding
+  Complete any PIN/passkey or confirmation prompt.
+- **Pair** on a Bluetooth LE device is experimental. macOS has no public API to
+  pair an LE device directly, so the app connects and reads the device's
+  characteristics; if one requires encryption, macOS shows its own pairing
+  prompt. It reports **Paired** only when macOS then lists a new matching paired
+  device. A connection or successful read alone never counts as pairing. If the
+  device can't be connected, exposes nothing that triggers pairing, or pairing
+  can't be confirmed within 60 seconds, the app disconnects and opens Bluetooth
+  settings with the reason. Mice, keyboards and other HID devices usually pair
+  only through Settings, because their secure services are reserved by macOS.
+- Unsupported devices open Bluetooth settings. The app selects the corresponding
   row in its own list and shows the name/identifier; **Copy Name** helps you find
   it in Settings. It cannot reliably highlight a device inside Apple's Settings.
 - **Ignore** dismisses the alert and moves the device to Ignored until restart.
@@ -114,7 +123,8 @@ Command Line Tools-only setups need (XCTest requires full Xcode).
 
 The portable Swift Testing target covers the ten-second boundary, startup exclusion,
 deduplication, pause/resume, ignore/undo/restart, interrupted observation, direct
-pairing decisions, settings fallback, outcomes, and cancellation.
+pairing decisions, BLE pairing probe decisions and evidence, settings fallback,
+outcomes, and cancellation.
 It can run on Linux with Swift installed. The native executable is included
 only on macOS. A GitHub Actions workflow builds/tests on `macos-latest` and
 archives an app when this project is hosted in a GitHub repository.
@@ -142,7 +152,9 @@ Before relying on it, check on your Mac:
 2. After the countdown, make a different device discoverable; confirm one alert,
    Pair/Ignore actions, correct device routing, and no repeated alert.
 3. Exercise Classic pairing, any PIN/passkey prompts, cancellation, and a device
-   disappearing mid-attempt. Check the BLE Settings handoff separately.
+   disappearing mid-attempt. Check BLE Pair separately: with a device that
+   requires encryption (expect a macOS prompt, then Paired), and with a mouse or
+   keyboard (expect the Settings handoff with a reason).
 4. Ignore, undo, pause/resume, sleep/wake, and toggle Bluetooth off/on.
 5. Deny/re-enable permissions, check Focus suppression, then enable launch at
    login and verify after logging back in.

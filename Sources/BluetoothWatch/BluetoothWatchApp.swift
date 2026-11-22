@@ -50,10 +50,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 defer: false
             )
             window.title = "Bluetooth Watch"
-            window.contentViewController = NSHostingController(rootView: DeviceListView(model: .shared))
+            let hosting = NSHostingController(rootView: DeviceListView(model: .shared))
+            // Without this, the window shrinks to the SwiftUI content's narrow ideal width.
+            hosting.sizingOptions = [.minSize]
+            window.contentViewController = hosting
             window.minSize = NSSize(width: 520, height: 440)
+            window.setContentSize(NSSize(width: 660, height: 650))
             window.isReleasedWhenClosed = false
-            window.center()
+            if !window.setFrameUsingName("DevicesWindow") { window.center() }
+            window.setFrameAutosaveName("DevicesWindow")
             devicesWindow = window
         }
         devicesWindow?.makeKeyAndOrderFront(nil)

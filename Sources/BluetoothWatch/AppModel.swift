@@ -26,7 +26,9 @@ final class AppModel: ObservableObject {
     private lazy var scanner = BluetoothDiscovery()
     private let runID = UUID().uuidString
     private lazy var notifications = NotificationHub(runID: runID)
-    private lazy var pairing = PairingController(driver: ClassicPairingDriver()) { [weak self] device in
+    private lazy var pairing = PairingController(
+        driver: ClassicPairingDriver(), leDriver: LEPairingDriver()
+    ) { [weak self] device in
         self?.selectedDeviceID = device.id
         self?.onReveal?()
         return Self.openBluetoothSettings()
