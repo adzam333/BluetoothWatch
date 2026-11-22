@@ -34,6 +34,40 @@ Bluetooth Watch to that Focus's allowed apps; Time Sensitive alerts need an
 Apple-provisioned entitlement that local ad-hoc builds cannot use.
 No administrator access, cloud service, or third-party packages are needed.
 
+### Stable local signing
+
+To keep macOS permissions associated with one local signing identity across
+rebuilds, create a self-signed code-signing certificate in Keychain Access:
+
+1. Open **Keychain Access**, select the **login** keychain, then choose
+   **Certificate Assistant > Create a Certificate**.
+2. Give it a stable name such as **Bluetooth Watch Local Signing**. Choose
+   **Self Signed Root** as the identity type and **Code Signing** as the
+   certificate type, then finish the assistant and save it to the login
+   keychain.
+3. Confirm that macOS lists a valid code-signing identity:
+
+   ```sh
+   security find-identity -v -p codesigning
+   ```
+
+4. Build and install using the certificate's exact name:
+
+   ```sh
+   CODE_SIGN_IDENTITY="Bluetooth Watch Local Signing" bash scripts/build-app.sh --install
+   ```
+
+Use the same identity name for later rebuilds. The build script prints the
+identity used and still verifies the resulting signature. A self-signed local
+build is not notarized or intended for distribution. If Bluetooth Watch was
+previously granted access while ad-hoc signed, macOS may ask once more after
+switching identities; allow it, then rebuild with the same identity to check
+that the grant persists.
+
+**Verification on this Mac:** `security find-identity -v -p codesigning`
+currently reports zero valid identities. Stable-identity rebuilds and
+Bluetooth-permission persistence have therefore not yet been verified here.
+
 ## How it behaves
 
 - The first **10 seconds of active discovery** are silent. Devices found during

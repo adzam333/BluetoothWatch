@@ -31,12 +31,18 @@ APP="$ROOT/build/Bluetooth Watch.app"
 STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/bluetoothwatch-build.XXXXXX")"
 trap 'rm -rf "$STAGE_DIR"' EXIT
 STAGED="$STAGE_DIR/Bluetooth Watch.app"
+SIGNING_IDENTITY="${CODE_SIGN_IDENTITY:--}"
 mkdir -p "$STAGED/Contents/MacOS"
 cp "$BIN_DIR/BluetoothWatch" "$STAGED/Contents/MacOS/BluetoothWatch"
 cp "$ROOT/Packaging/Info.plist" "$STAGED/Contents/Info.plist"
 /usr/bin/plutil -lint "$STAGED/Contents/Info.plist"
 /usr/bin/xattr -cr "$STAGED"
-/usr/bin/codesign --force --sign "${CODE_SIGN_IDENTITY:--}" --timestamp=none "$STAGED"
+if [[ "$SIGNING_IDENTITY" == "-" ]]; then
+    echo "Signing identity: ad-hoc (Bluetooth permission may need approval after rebuilds)"
+else
+    echo "Signing identity: $SIGNING_IDENTITY"
+fi
+/usr/bin/codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none "$STAGED"
 /usr/bin/codesign --verify --strict "$STAGED"
 rm -rf "$APP"
 mkdir -p "$ROOT/build"
