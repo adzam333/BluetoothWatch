@@ -6,16 +6,15 @@ struct BluetoothWatchApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
-        MenuBarExtra("Bluetooth Watch", systemImage: "dot.radiowaves.left.and.right") {
-            MenuBarContent(model: .shared)
-        }
-        .menuBarExtraStyle(.window)
+        // The menu bar item and its dropdown are managed by AppDelegate so the app can open them itself.
+        Settings { EmptyView() }
     }
 }
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var devicesWindow: NSWindow?
+    private var statusItem: NSStatusItem?
+    private let popover = NSPopover()
     private var didStart = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -29,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         didStart = true
+        setUpStatusItem()
         AppModel.shared.onReveal = { [weak self] in self?.showDevices() }
         AppModel.shared.start()
         if !UserDefaults.standard.bool(forKey: "hasShownWelcome") {
@@ -41,22 +41,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if didStart { AppModel.shared.shutdown() }
     }
 
-    private func showDevices() {
-        if devicesWindow == nil {
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 660, height: 650),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = "Bluetooth Watch"
-            window.contentViewController = NSHostingController(rootView: DeviceListView(model: .shared))
-            window.minSize = NSSize(width: 520, height: 440)
-            window.isReleasedWhenClosed = false
-            window.center()
-            devicesWindow = window
+    private func setUpStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.button?.image = NSImage(
+            systemSymbolName: "dot.radiowaves.left.and.right",
+            accessibilityDescription: "Bluetooth Watch"
+        )
+        item.button?.target = self
+        item.button?.action = #selector(togglePopover(_:))
+        statusItem = item
+        AppModel.shared.observeStatusIcon { [weak self] symbol, tint in
+            guard let button = self?.statusItem?.button else { return }
+            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Bluetooth Watch")
+            button.contentTintColor = tint
+            button.toolTip = AppModel.shared.status
         }
-        devicesWindow?.makeKeyAndOrderFront(nil)
+        popover.behavior = .transient
+        popover.contentSize = NSSize(width: DeviceListView.width, height: DeviceListView.height)
+        popover.contentViewController = NSHostingController(rootView: DeviceListView(model: .shared))
+    }
+
+    @objc private func togglePopover(_ sender: Any?) {
+        if popover.isShown { popover.performClose(sender) } else { showDevices() }
+    }
+
+    private func showDevices() {
+        guard let button = statusItem?.button else { return }
         NSApp.activate(ignoringOtherApps: true)
+        if !popover.isShown {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        }
+        popover.contentViewController?.view.window?.makeKey()
     }
 }

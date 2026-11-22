@@ -18,6 +18,11 @@ targets.append(.executableTarget(
         .linkedFramework("UserNotifications"), .linkedFramework("ServiceManagement")
     ]
 ))
+targets.append(.testTarget(
+    name: "BluetoothWatchNativeTests",
+    dependencies: ["BluetoothWatch", "BluetoothWatchCore"],
+    path: "Tests/BluetoothWatchNativeTests"
+))
 #endif
 
 let package = Package(

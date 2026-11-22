@@ -49,6 +49,20 @@ public struct DiscoverySession {
         baselineStartedAt = nil
     }
 
+    /// Applies a native scanner state change to the discovery baseline.
+    public mutating func updateScannerState(
+        isRunning scannerIsRunning: Bool,
+        isPaused: Bool,
+        isAsleep: Bool,
+        at now: TimeInterval
+    ) {
+        if scannerIsRunning && !isPaused && !isAsleep {
+            resume(at: now)
+        } else if isScanning {
+            interrupt(at: now)
+        }
+    }
+
     /// Returns true once for an alert-eligible post-baseline identity. Unused opportunities are
     /// discarded when scanning is interrupted or the identity is ignored.
     @discardableResult
@@ -58,8 +72,7 @@ public struct DiscoverySession {
         var record: DeviceRecord
         if let existing = records[device.id] {
             record = existing
-            if device.hasName { record.device.name = device.name }
-            if let rssi = device.rssi { record.device.rssi = rssi }
+            record.device.mergeObservation(device)
             record.lastSeen = now
         } else {
             record = DeviceRecord(

@@ -45,7 +45,26 @@ struct DiscoverySessionTests {
         #expect(session.records[unnamed.id]?.lastSeen == 14)
     }
 
-    @Test func testAnonymousBLEIsListedButNeverAlerts() {
+    @Test func testBufferedObservationsPreserveUsableNameAndUpdateRSSI() {
+        var buffered = DiscoveredDevice(id: device("buffered").id, name: "Sensor", rssi: -70)
+        buffered.mergeObservation(DiscoveredDevice(id: buffered.id, rssi: -50))
+        #expect(buffered.name == "Sensor")
+        #expect(buffered.rssi == -50)
+        buffered.mergeObservation(DiscoveredDevice(id: buffered.id, name: " \n", rssi: -40))
+        #expect(buffered.name == "Sensor")
+        #expect(buffered.rssi == -40)
+        buffered.mergeObservation(DiscoveredDevice(id: buffered.id, name: "New name"))
+        #expect(buffered.name == "New name")
+        #expect(buffered.rssi == -40)
+
+        var session = DiscoverySession()
+        session.resume(at: 0)
+        #expect(session.discover(buffered, at: 11) == true)
+        #expect(session.records[buffered.id]?.device.name == "New name")
+        #expect(session.discover(buffered, at: 12) == false)
+    }
+
+    @Test func testAnonymousBLEIsRecordedButNeverAlerts() {
         var session = DiscoverySession()
         session.resume(at: 0)
         let anonymous = device("rotating", name: "  ")

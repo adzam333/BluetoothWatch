@@ -16,7 +16,8 @@ bash scripts/build-app.sh --install
 This builds the native app, signs it locally, installs it in
 `~/Applications/Bluetooth Watch.app`, and opens it. Allow Bluetooth and
 notifications when macOS asks. The app lives in the menu bar, not the Dock.
-Enable **Launch at login** in its menu or window if desired; macOS may also
+Click its menu bar icon to see discovered devices. Enable **Launch at login**
+there if desired; macOS may also
 require approval under System Settings > General > Login Items & Extensions.
 Keep the app at its installed path after registering launch at login.
 
@@ -33,6 +34,58 @@ Bluetooth Watch to that Focus's allowed apps; Time Sensitive alerts need an
 Apple-provisioned entitlement that local ad-hoc builds cannot use.
 No administrator access, cloud service, or third-party packages are needed.
 
+### Stable local signing
+
+To keep macOS permissions associated with one local signing identity across
+rebuilds, create a self-signed code-signing certificate in Keychain Access:
+
+1. Open **Keychain Access**, select the **login** keychain, then choose
+   **Certificate Assistant > Create a Certificate**.
+2. Give it a stable name such as **Bluetooth Watch Local Signing**. Choose
+   **Self Signed Root** as the identity type and **Code Signing** as the
+   certificate type, then finish the assistant and save it to the login
+   keychain.
+3. If `security find-identity` reports the certificate as untrusted, export
+   its public certificate from Keychain Access (**File > Export Items**) and
+   trust it for the code-signing policy only:
+
+   ```sh
+   security add-trusted-cert -r trustRoot -p codeSign \
+     -k "$HOME/Library/Keychains/login.keychain-db" /path/to/certificate.cer
+   ```
+
+4. Confirm that macOS lists a valid code-signing identity:
+
+   ```sh
+   security find-identity -v -p codesigning
+   ```
+
+5. Build and install using the certificate's exact name:
+
+   ```sh
+   CODE_SIGN_IDENTITY="Bluetooth Watch Local Signing" bash scripts/build-app.sh --install
+   ```
+
+Use the same identity name for later rebuilds. The build script prints the
+identity used and still verifies the resulting signature. A self-signed local
+build is not notarized or intended for distribution. If Bluetooth Watch was
+previously granted access while ad-hoc signed, macOS may ask once more after
+switching identities; allow it, then rebuild with the same identity to check
+that the grant persists.
+
+**Verification on this Mac (2026-11-22):** The self-signed
+**Bluetooth Watch Local Signing** identity was used for two consecutive
+builds/installs. Bluetooth access was approved after the first install; the
+second app process started scanning without a Bluetooth-access error or another
+permission prompt. `security find-identity -v -p codesigning` reports the
+identity as valid. This verifies local permission persistence for this
+identity and machine only.
+
+**BLE scan CPU spot check (2026-11-22):** While the app was scanning, five
+consecutive `top` samples at five-second intervals ranged from 2.4% to 2.9%
+CPU. This is a spot measurement, not an A/B comparison with duplicate reports
+disabled; battery impact was not separately measured.
+
 ## How it behaves
 
 - The first **10 seconds of active discovery** are silent. Devices found during
@@ -40,14 +93,39 @@ No administrator access, cloud service, or third-party packages are needed.
   they disappear and return.
 - A device first observed after the baseline triggers at most one alert per
   identity per run. Expand the macOS notification to reveal **Pair** and
-  **Ignore**; those buttons are also in **Show Devices**.
+  **Ignore**; clicking the alert opens the menu bar list at that device if it
+  has a name, with the same buttons.
+- The list shows only devices with nonempty names, including in the Ignored
+  section. Unnamed devices remain in the discovery history and appear if a
+  name is subsequently reported.
+- Search devices by name or identifier, or filter the list to named devices,
+  Bluetooth Classic, Bluetooth LE, or Ignored. Selecting a device clears the
+  search and switches to the relevant list section.
 - Only Bluetooth Classic devices and Bluetooth LE devices that report a name
   alert. Anonymous BLE advertisers (often phones, watches and trackers rotating
-  private addresses) are still listed under **New this run** but never notify. A
-  BLE device first seen without a name alerts once if a name arrives later.
+  private addresses) do not appear in the list or notify. A BLE device first
+  seen without a name alerts once if a name arrives later, unless its discovery
+  history excludes the alert. Unnamed Classic devices can still notify; use the
+  notification actions or Bluetooth Settings until they report a name.
+- BLE scanning requests duplicate advertisements so macOS can report a later
+  scan-response name. Bluetooth Watch limits repeated delivery to once every
+  three seconds per identity, except that a newly reported name is delivered
+  immediately. This reduces app-side update work; radio power remains managed
+  by macOS, and no quantitative battery-impact measurement is available yet.
 - **Pair** attempts public-API pairing for supported Bluetooth Classic devices.
-  Complete any PIN/passkey or confirmation prompt. Bluetooth LE and unsupported
-  devices open Bluetooth settings instead. The app selects the corresponding
+  Complete any PIN/passkey or confirmation prompt.
+- **Pair** on a Bluetooth LE device is experimental. macOS has no public API to
+  pair an LE device directly, so the app connects and reads the device's
+  characteristics; if one requires encryption, macOS shows its own pairing
+  prompt. The app cannot reliably confirm that the selected BLE device was
+  paired, so it opens Bluetooth settings to check after the attempt, even if
+  macOS's pairing prompt succeeded. A connection or successful read alone
+  never counts as pairing. If the
+  device can't be connected, exposes nothing that triggers pairing, or pairing
+  can't be confirmed within 60 seconds, the app disconnects and opens Bluetooth
+  settings with the reason. Mice, keyboards and other HID devices usually pair
+  only through Settings, because their secure services are reserved by macOS.
+- Unsupported devices open Bluetooth settings. The app selects the corresponding
   row in its own list and shows the name/identifier; **Copy Name** helps you find
   it in Settings. It cannot reliably highlight a device inside Apple's Settings.
 - **Ignore** dismisses the alert and moves the device to Ignored until restart.
@@ -59,7 +137,12 @@ No administrator access, cloud service, or third-party packages are needed.
   the baseline/history.
 - Sleep, Bluetooth interruptions, and recovery require another quiet baseline;
   previously seen identities remain excluded. Errors and permissions are shown
-  in the window rather than silently pretending to scan.
+  in the menu bar list rather than silently pretending to scan.
+- The menu bar icon distinguishes active scanning, unconfirmed Classic
+  coverage, paused scanning, and scanner errors. Bluetooth and notification
+  settings shortcuts appear where relevant. On returning to Bluetooth Watch
+  from System Settings, scanner availability and notification authorization are
+  checked again.
 - Device observations and ignored identities are in memory only. Restarting
   clears them and begins another 10-second baseline. No discovery telemetry or
   device list is uploaded or written to disk by this app.
@@ -112,11 +195,14 @@ open "build/Bluetooth Watch.app"
 `scripts/test.sh` runs `swift test`, adding the Swift Testing search paths that
 Command Line Tools-only setups need (XCTest requires full Xcode).
 
-The portable Swift Testing target covers the ten-second boundary, startup exclusion,
+The Swift Testing targets cover the ten-second boundary, startup exclusion,
 deduplication, pause/resume, ignore/undo/restart, interrupted observation, direct
-pairing decisions, settings fallback, outcomes, and cancellation.
-It can run on Linux with Swift installed. The native executable is included
-only on macOS. A GitHub Actions workflow builds/tests on `macos-latest` and
+pairing decisions, BLE pairing probe decisions, settings fallback,
+outcomes, cancellation, stale scanner generations, recovery baselines, and
+notification run routing. AppModel integration tests inject fake scanner and
+notification services and run on macOS without Bluetooth hardware or permission
+prompts. The core tests can also run on Linux with Swift installed; the native
+app and integration tests are included only on macOS. A GitHub Actions workflow builds/tests on `macos-latest` and
 archives an app when this project is hosted in a GitHub repository.
 
 **Verification status:** portable logic can be tested independently, but native
@@ -132,7 +218,7 @@ subsystem `local.bluetoothwatch.app`, or in Terminal:
 ```
 
 These local diagnostic logs do not include device names or identifiers. The
-status message in **Show Devices** wraps to display the full error and can be
+status message in the menu bar list wraps to display the full error and can be
 selected and copied.
 
 Before relying on it, check on your Mac:
@@ -142,7 +228,9 @@ Before relying on it, check on your Mac:
 2. After the countdown, make a different device discoverable; confirm one alert,
    Pair/Ignore actions, correct device routing, and no repeated alert.
 3. Exercise Classic pairing, any PIN/passkey prompts, cancellation, and a device
-   disappearing mid-attempt. Check the BLE Settings handoff separately.
+   disappearing mid-attempt. Check BLE Pair separately: with a device that
+   requires encryption (look for a macOS prompt, then check pairing in Settings),
+   and with a mouse or keyboard (expect the Settings handoff with a reason).
 4. Ignore, undo, pause/resume, sleep/wake, and toggle Bluetooth off/on.
 5. Deny/re-enable permissions, check Focus suppression, then enable launch at
    login and verify after logging back in.

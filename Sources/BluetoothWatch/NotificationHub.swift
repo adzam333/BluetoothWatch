@@ -43,6 +43,26 @@ final class NotificationHub: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    func refreshPermission() {
+        center.getNotificationSettings { [weak self] settings in
+            Task { @MainActor in
+                guard let self else { return }
+                switch settings.authorizationStatus {
+                case .authorized, .provisional, .ephemeral:
+                    self.onPermission?(settings.alertSetting == .enabled
+                        ? nil
+                        : "Notifications are disabled. Enable alerts for Bluetooth Watch in System Settings > Notifications.")
+                case .denied:
+                    self.onPermission?("Notifications are off. Enable Bluetooth Watch in System Settings > Notifications.")
+                case .notDetermined:
+                    self.onPermission?("Notifications have not been authorized. New devices still appear in the menu bar list.")
+                @unknown default:
+                    self.onPermission?("Notification permission status is unavailable. Check System Settings > Notifications.")
+                }
+            }
+        }
+    }
+
     func notify(_ device: DiscoveredDevice) {
         let content = UNMutableNotificationContent()
         content.title = "New Bluetooth device"

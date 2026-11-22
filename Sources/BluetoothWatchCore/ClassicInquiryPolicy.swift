@@ -56,6 +56,11 @@ public struct ClassicInquiryPolicy: Equatable, Sendable {
         isInquiryLive = false
     }
 
+    /// Forget prior Classic evidence when macOS cannot create an inquiry at all.
+    public mutating func inquiryCreationFailed() {
+        reset()
+    }
+
     /// Returns true when readiness changed.
     @discardableResult
     public mutating func observe(_ evidence: Evidence) -> Bool {

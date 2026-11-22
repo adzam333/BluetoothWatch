@@ -1,9 +1,11 @@
 import Foundation
 
-public enum PairingResult: Equatable {
+public enum PairingResult: Equatable, Sendable {
     case paired
     case cancelled
     case failed(String)
+    /// The attempt could not pair in-app; hand off to Bluetooth settings with this reason.
+    case settingsRequired(String)
 }
 
 public enum PairingStatus: Equatable {
@@ -12,6 +14,7 @@ public enum PairingStatus: Equatable {
     case cancelled
     case failed(String)
     case settingsOpened
+    case settingsFallback(String)
 
     public var message: String {
         switch self {
@@ -21,6 +24,8 @@ public enum PairingStatus: Equatable {
         case .failed(let reason): return "Pairing failed: \(reason)"
         case .settingsOpened:
             return "Select this device in Bluetooth settings. Opening settings does not pair it."
+        case .settingsFallback(let reason):
+            return "\(reason) Bluetooth settings opened; select this device there. Opening settings does not pair it."
         }
     }
 }
@@ -38,18 +43,28 @@ public final class PairingController {
     public private(set) var activeDeviceID: DeviceIdentity?
     public var onChange: (() -> Void)?
     private let driver: PairingDriver
+    private let leDriver: PairingDriver?
     private let openSettings: (DiscoveredDevice) -> Bool
     private var attempt: UUID?
+    private var activeDriver: PairingDriver?
 
-    public init(driver: PairingDriver, openSettings: @escaping (DiscoveredDevice) -> Bool) {
+    /// `driver` handles Bluetooth Classic devices; the optional `leDriver` handles Bluetooth LE.
+    /// Devices neither driver supports open Bluetooth settings.
+    public init(
+        driver: PairingDriver,
+        leDriver: PairingDriver? = nil,
+        openSettings: @escaping (DiscoveredDevice) -> Bool
+    ) {
         self.driver = driver
+        self.leDriver = leDriver
         self.openSettings = openSettings
     }
 
     @discardableResult
     public func pair(_ device: DiscoveredDevice) -> Bool {
         guard activeDeviceID == nil else { return false }
-        if device.id.transport == .lowEnergy || !driver.canPair(device) {
+        let candidate = device.id.transport == .lowEnergy ? leDriver : driver
+        guard let selected = candidate, selected.canPair(device) else {
             statuses[device.id] = openSettings(device)
                 ? .settingsOpened : .failed("Could not open Bluetooth settings.")
             onChange?()
@@ -58,16 +73,22 @@ public final class PairingController {
         let token = UUID()
         attempt = token
         activeDeviceID = device.id
+        activeDriver = selected
         statuses[device.id] = .pairing
         onChange?()
-        driver.startPairing(device) { [weak self] result in
+        selected.startPairing(device) { [weak self] result in
             guard let self, self.attempt == token else { return }
             switch result {
             case .paired: self.statuses[device.id] = .paired
             case .cancelled: self.statuses[device.id] = .cancelled
             case .failed(let reason): self.statuses[device.id] = .failed(reason)
+            case .settingsRequired(let reason):
+                self.statuses[device.id] = self.openSettings(device)
+                    ? .settingsFallback(reason)
+                    : .failed("\(reason) Could not open Bluetooth settings.")
             }
             self.activeDeviceID = nil
+            self.activeDriver = nil
             self.attempt = nil
             self.onChange?()
         }
@@ -76,10 +97,12 @@ public final class PairingController {
 
     public func cancel() {
         guard let id = activeDeviceID else { return }
+        let cancelled = activeDriver
         attempt = nil
         activeDeviceID = nil
+        activeDriver = nil
         statuses[id] = .cancelled
-        driver.cancelPairing()
+        cancelled?.cancelPairing()
         onChange?()
     }
 }

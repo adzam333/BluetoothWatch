@@ -55,6 +55,19 @@ struct ClassicInquiryPolicyTests {
         #expect(!policy.isClassicConfirmed)
     }
 
+    @Test func inquiryCreationFailureClearsPriorClassicConfirmation() {
+        var policy = ClassicInquiryPolicy()
+        policy.beginInquiry()
+        policy.observe(.result)
+        #expect(policy.readiness == .confirmed)
+
+        policy.beginInquiry()
+        policy.inquiryCreationFailed()
+        #expect(policy.readiness == .waiting)
+        #expect(!policy.isClassicConfirmed)
+        #expect(policy.consecutiveUnstartedFailures == 0)
+    }
+
     @Test func observedCycleEndAfterLiveContinues() {
         var policy = ClassicInquiryPolicy()
         policy.beginInquiry()

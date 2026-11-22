@@ -124,4 +124,90 @@ struct PairingControllerTests {
             #expect(controller.activeDeviceID == nil)
         }
     }
+
+    @Test func testBLEUsesLEDriverAndOnlyPairsOnReportedSuccess() async {
+        await MainActor.run {
+            let classic = FakePairingDriver()
+            let le = FakePairingDriver()
+            let controller = PairingController(driver: classic, leDriver: le, openSettings: { _ in
+                Issue.record("A paired LE device must not open settings")
+                return true
+            })
+            let sensor = device("ble-uuid", transport: .lowEnergy)
+            #expect(controller.pair(sensor))
+            #expect(classic.devices.isEmpty)
+            #expect(le.devices == [sensor])
+            #expect(controller.statuses[sensor.id] == .pairing)
+            #expect(controller.activeDeviceID == sensor.id)
+            le.completions[0](.paired)
+            #expect(controller.statuses[sensor.id] == .paired)
+            #expect(controller.activeDeviceID == nil)
+        }
+    }
+
+    @Test func testBLESettingsRequiredOpensSettingsWithReason() async {
+        await MainActor.run {
+            let le = FakePairingDriver()
+            var opened: [DeviceIdentity] = []
+            let controller = PairingController(driver: FakePairingDriver(), leDriver: le) { device in
+                opened.append(device.id)
+                return true
+            }
+            let mouse = device("ble-uuid", transport: .lowEnergy)
+            #expect(controller.pair(mouse))
+            #expect(opened.isEmpty)
+            le.completions[0](.settingsRequired("No pairing prompt."))
+            #expect(opened == [mouse.id])
+            #expect(controller.statuses[mouse.id] == .settingsFallback("No pairing prompt."))
+            #expect(controller.activeDeviceID == nil)
+        }
+    }
+
+    @Test func testBLESettingsRequiredReportsWhenSettingsCannotOpen() async {
+        await MainActor.run {
+            let le = FakePairingDriver()
+            let controller = PairingController(driver: FakePairingDriver(), leDriver: le, openSettings: { _ in false })
+            let mouse = device("ble-uuid", transport: .lowEnergy)
+            #expect(controller.pair(mouse))
+            le.completions[0](.settingsRequired("No pairing prompt."))
+            #expect(controller.statuses[mouse.id] == .failed("No pairing prompt. Could not open Bluetooth settings."))
+        }
+    }
+
+    @Test func testUnsupportedBLEFallsBackWithoutStartingLEDriver() async {
+        await MainActor.run {
+            let le = FakePairingDriver()
+            le.supported = false
+            var opened = 0
+            let controller = PairingController(driver: FakePairingDriver(), leDriver: le) { _ in
+                opened += 1
+                return true
+            }
+            let mouse = device("not-a-uuid", transport: .lowEnergy)
+            #expect(controller.pair(mouse))
+            #expect(le.devices.isEmpty)
+            #expect(opened == 1)
+            #expect(controller.statuses[mouse.id] == .settingsOpened)
+        }
+    }
+
+    @Test func testCancellingBLECancelsOnlyLEDriverAndIgnoresLateResult() async {
+        await MainActor.run {
+            let classic = FakePairingDriver()
+            let le = FakePairingDriver()
+            let controller = PairingController(driver: classic, leDriver: le, openSettings: { _ in
+                Issue.record("A cancelled attempt must not open settings")
+                return true
+            })
+            let sensor = device("ble-uuid", transport: .lowEnergy)
+            #expect(controller.pair(sensor))
+            #expect(!controller.pair(device("aa:bb:cc:dd:ee:ff")))
+            controller.cancel()
+            #expect(le.cancellations == 1)
+            #expect(classic.cancellations == 0)
+            le.completions[0](.settingsRequired("late"))
+            #expect(controller.statuses[sensor.id] == .cancelled)
+            #expect(controller.activeDeviceID == nil)
+        }
+    }
 }
