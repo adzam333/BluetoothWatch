@@ -117,8 +117,10 @@ disabled; battery impact was not separately measured.
 - **Pair** on a Bluetooth LE device is experimental. macOS has no public API to
   pair an LE device directly, so the app connects and reads the device's
   characteristics; if one requires encryption, macOS shows its own pairing
-  prompt. It reports **Paired** only when macOS then lists a new matching paired
-  device. A connection or successful read alone never counts as pairing. If the
+  prompt. The app cannot reliably confirm that the selected BLE device was
+  paired, so it opens Bluetooth settings to check after the attempt, even if
+  macOS's pairing prompt succeeded. A connection or successful read alone
+  never counts as pairing. If the
   device can't be connected, exposes nothing that triggers pairing, or pairing
   can't be confirmed within 60 seconds, the app disconnects and opens Bluetooth
   settings with the reason. Mice, keyboards and other HID devices usually pair
@@ -195,7 +197,7 @@ Command Line Tools-only setups need (XCTest requires full Xcode).
 
 The Swift Testing targets cover the ten-second boundary, startup exclusion,
 deduplication, pause/resume, ignore/undo/restart, interrupted observation, direct
-pairing decisions, BLE pairing probe decisions and evidence, settings fallback,
+pairing decisions, BLE pairing probe decisions, settings fallback,
 outcomes, cancellation, stale scanner generations, recovery baselines, and
 notification run routing. AppModel integration tests inject fake scanner and
 notification services and run on macOS without Bluetooth hardware or permission
@@ -227,8 +229,8 @@ Before relying on it, check on your Mac:
    Pair/Ignore actions, correct device routing, and no repeated alert.
 3. Exercise Classic pairing, any PIN/passkey prompts, cancellation, and a device
    disappearing mid-attempt. Check BLE Pair separately: with a device that
-   requires encryption (expect a macOS prompt, then Paired), and with a mouse or
-   keyboard (expect the Settings handoff with a reason).
+   requires encryption (look for a macOS prompt, then check pairing in Settings),
+   and with a mouse or keyboard (expect the Settings handoff with a reason).
 4. Ignore, undo, pause/resume, sleep/wake, and toggle Bluetooth off/on.
 5. Deny/re-enable permissions, check Focus suppression, then enable launch at
    login and verify after logging back in.

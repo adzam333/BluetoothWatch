@@ -4,8 +4,9 @@ import Foundation
 ///
 /// macOS has no public API that bonds an LE device directly. The only public route
 /// is to connect and read characteristics: reading one that requires encryption makes
-/// macOS show its own pairing prompt. A successful read or connection is not proof of
-/// pairing, so `.paired` is only reported when macOS lists a new matching paired device.
+/// macOS show its own pairing prompt. CoreBluetooth does not expose a public way
+/// to confirm that the selected peripheral was bonded, so the probe never reports
+/// a successful read or connection as pairing.
 public struct LEPairingProbe: Sendable {
     public struct Candidate: Equatable, Sendable {
         public let instanceIndex: Int
@@ -67,68 +68,33 @@ public struct LEPairingProbe: Sendable {
     public var hasCandidates: Bool { !queue.isEmpty }
 
     /// The first step after services and characteristics are known.
-    public mutating func start(pairedEvidence: Bool) -> Step {
-        next(pairedEvidence: pairedEvidence)
+    public mutating func start() -> Step {
+        next()
     }
 
     /// The step after a characteristic read finishes.
-    public mutating func record(_ result: ReadResult, pairedEvidence: Bool) -> Step {
-        if pairedEvidence { return .finish(.paired) }
+    public mutating func record(_ result: ReadResult) -> Step {
         switch result {
         case .securityRequired:
             return .finish(.failed("macOS requested pairing, but it was not completed (declined, timed out, or rejected by the device). Retry, or use Bluetooth settings."))
         case .pairingRemoved:
             return .finish(.failed("The device no longer has this Mac's pairing keys. Remove it in Bluetooth settings, then pair again."))
         case .success, .notPermitted, .otherError:
-            return next(pairedEvidence: false)
+            return next()
         }
     }
 
-    private mutating func next(pairedEvidence: Bool) -> Step {
-        if pairedEvidence { return .finish(.paired) }
+    public static let timeoutResult = PairingResult.settingsRequired(
+        "Pairing timed out after 60 seconds. Check that the device is nearby and ready to pair."
+    )
+
+    private mutating func next() -> Step {
         guard readsAttempted < maxReads, !queue.isEmpty else {
             return .finish(.settingsRequired(readsAttempted == 0
                 ? "This device exposes nothing BluetoothWatch can use to request pairing."
-                : "BluetoothWatch connected, but macOS did not request or confirm pairing. This device may only pair through Bluetooth settings (most mice and keyboards do)."))
+                : "BluetoothWatch connected, but cannot confirm whether macOS paired this device. Check its status in Bluetooth settings."))
         }
         readsAttempted += 1
         return .read(queue.removeFirst())
-    }
-}
-
-/// Matches macOS's paired-device list against a snapshot taken before an attempt.
-public enum LEPairingEvidence {
-    public struct PairedDevice: Equatable, Sendable {
-        public let address: String
-        public let name: String?
-
-        public init(address: String, name: String?) {
-            self.address = address.lowercased().replacingOccurrences(of: "-", with: ":")
-            self.name = name
-        }
-    }
-
-    /// True only if a device absent from `before` is now paired and, when both names are
-    /// known, has the same name. Unrelated pairings made elsewhere are ignored when names differ.
-    public static func isNewPairing(
-        before: Set<String>,
-        after: [PairedDevice],
-        deviceName: String?
-    ) -> Bool {
-        let normalizedBefore = Set(before.map {
-            $0.lowercased().replacingOccurrences(of: "-", with: ":")
-        })
-        let wanted = normalized(deviceName)
-        return after.contains { paired in
-            guard !paired.address.isEmpty, !normalizedBefore.contains(paired.address) else { return false }
-            guard let wanted, let name = normalized(paired.name) else { return true }
-            return name == wanted
-        }
-    }
-
-    private static func normalized(_ name: String?) -> String? {
-        guard let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !trimmed.isEmpty else { return nil }
-        return trimmed.lowercased()
     }
 }

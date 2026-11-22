@@ -1,31 +1,27 @@
 import Foundation
 import OSLog
 @preconcurrency import CoreBluetooth
-@preconcurrency import IOBluetooth
 import BluetoothWatchCore
 
 /// Experimental in-app Bluetooth LE pairing, started only by an explicit Pair action.
 ///
 /// Connects with a private central, then reads characteristics so macOS can show its
-/// own pairing prompt for any that require encryption. Reports `.paired` only when
-/// macOS lists a new matching paired device; otherwise hands off to Bluetooth settings.
+/// own pairing prompt for any that require encryption. Pairing cannot be confirmed
+/// for the selected peripheral through public APIs, so it hands off to Settings.
 @MainActor
 final class LEPairingDriver: NSObject, PairingDriver {
     private let timeout: TimeInterval = 60
     private let connectTimeout: TimeInterval = 15
-    private let evidenceSettleDelay: TimeInterval = 1.5
     private let logger = Logger(subsystem: "local.bluetoothwatch.app", category: "LEPairing")
     private var central: CBCentralManager?
     private var peripheral: CBPeripheral?
     private var device: DiscoveredDevice?
     private var completion: ((PairingResult) -> Void)?
     private var attempt: UUID?
-    private var pairedBefore: Set<String> = []
     private var pendingServices = 0
     private var characteristics: [CBCharacteristic] = []
     private var probe: LEPairingProbe?
     private var currentRead: CBCharacteristic?
-    private var isSettling = false
     private var timeoutTask: Task<Void, Never>?
     private var connectTimeoutTask: Task<Void, Never>?
 
@@ -46,10 +42,9 @@ final class LEPairingDriver: NSObject, PairingDriver {
         attempt = token
         self.device = device
         self.completion = completion
-        pairedBefore = Set(Self.pairedDevices().map(\.address))
-        logger.notice("LE pairing started; \(self.pairedBefore.count) paired devices before.")
+        logger.notice("LE pairing started.")
         timeoutTask = after(timeout, token) { driver in
-            driver.finish(.failed("Pairing timed out after 60 seconds. Check that the device is nearby and ready to pair, or use Bluetooth settings."))
+            driver.finish(LEPairingProbe.timeoutResult)
         }
         if let central {
             handleState(central.state)
@@ -108,7 +103,7 @@ final class LEPairingDriver: NSObject, PairingDriver {
         }
         var probe = LEPairingProbe(candidates: candidates)
         logger.notice("LE pairing found \(candidates.count) characteristics; probing: \(probe.hasCandidates).")
-        let step = probe.start(pairedEvidence: hasPairingEvidence())
+        let step = probe.start()
         self.probe = probe
         apply(step)
     }
@@ -124,13 +119,6 @@ final class LEPairingDriver: NSObject, PairingDriver {
             let characteristic = characteristics[candidate.instanceIndex]
             currentRead = characteristic
             peripheral.readValue(for: characteristic)
-        case .finish(.settingsRequired(let reason)):
-            // macOS may update its paired list just after the prompt completes.
-            guard let token = attempt else { return }
-            isSettling = true
-            _ = after(evidenceSettleDelay, token) { driver in
-                driver.finish(driver.hasPairingEvidence() ? .paired : .settingsRequired(reason))
-            }
         case .finish(let result):
             finish(result)
         }
@@ -139,17 +127,9 @@ final class LEPairingDriver: NSObject, PairingDriver {
     private func record(_ result: LEPairingProbe.ReadResult) {
         guard var probe else { return }
         logger.notice("LE pairing read result: \(String(describing: result), privacy: .public).")
-        let step = probe.record(result, pairedEvidence: hasPairingEvidence())
+        let step = probe.record(result)
         self.probe = probe
         apply(step)
-    }
-
-    private func hasPairingEvidence() -> Bool {
-        LEPairingEvidence.isNewPairing(
-            before: pairedBefore,
-            after: Self.pairedDevices(),
-            deviceName: device?.name
-        )
     }
 
     private func finish(_ result: PairingResult) {
@@ -161,7 +141,6 @@ final class LEPairingDriver: NSObject, PairingDriver {
         device = nil
         probe = nil
         currentRead = nil
-        isSettling = false
         characteristics = []
         pendingServices = 0
         timeoutTask?.cancel()
@@ -188,12 +167,6 @@ final class LEPairingDriver: NSObject, PairingDriver {
         }
     }
 
-    private static func pairedDevices() -> [LEPairingEvidence.PairedDevice] {
-        (IOBluetoothDevice.pairedDevices() ?? []).compactMap { item in
-            guard let paired = item as? IOBluetoothDevice, let address = paired.addressString else { return nil }
-            return LEPairingEvidence.PairedDevice(address: address, name: paired.name)
-        }
-    }
 }
 
 extension LEPairingDriver: CBCentralManagerDelegate {
@@ -229,11 +202,8 @@ extension LEPairingDriver: CBCentralManagerDelegate {
         didDisconnectPeripheral peripheral: CBPeripheral,
         error: Error?
     ) {
-        guard self.central === central, peripheral === self.peripheral,
-              attempt != nil, !isSettling else { return }
-        finish(hasPairingEvidence()
-            ? .paired
-            : .failed("The device disconnected before pairing finished. Retry, or use Bluetooth settings."))
+        guard self.central === central, peripheral === self.peripheral, attempt != nil else { return }
+        finish(.settingsRequired("The device disconnected before pairing could be confirmed."))
     }
 }
 
