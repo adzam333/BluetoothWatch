@@ -22,7 +22,7 @@ final class BluetoothDiscovery: NSObject {
     private let startGracePeriod: TimeInterval = 2
     private var lastMessage = ""
     private var wantsMonitoring = false
-    private var generation: UInt64 = 0
+    private var callbackGeneration = DiscoveryCallbackGeneration()
     private var classicGapTimer: Timer?
     private var pendingBLE: [DeviceIdentity: DiscoveredDevice] = [:]
     private var bleThrottle = BLEDiscoveryThrottle()
@@ -42,7 +42,8 @@ final class BluetoothDiscovery: NSObject {
 
     func refreshAfterSettings() {
         guard wantsMonitoring else { return }
-        if central?.state == .unauthorized, !isRunning {
+        if central.map({ Self.availability(for: $0.state).shouldRecreateAfterSettings }) == true,
+           !isRunning {
             central?.delegate = nil
             central = nil
         }
@@ -51,7 +52,7 @@ final class BluetoothDiscovery: NSObject {
 
     func stop() {
         wantsMonitoring = false
-        generation &+= 1
+        callbackGeneration.advance()
         inquiryPolicy.reset()
         classicGapTimer?.invalidate()
         classicGapTimer = nil
@@ -94,12 +95,12 @@ final class BluetoothDiscovery: NSObject {
 
     private func handleCentralState(_ state: CBManagerState) {
         guard wantsMonitoring else { return }
-        switch state {
-        case .poweredOn:
-            generation &+= 1
+        switch Self.availability(for: state) {
+        case .ready:
+            callbackGeneration.advance()
             inquiryPolicy.reset()
             startTransportsIfReady()
-        case .unauthorized:
+        case .denied:
             stopTransportsForUnavailableState()
             setRunning(
                 false,
@@ -120,9 +121,18 @@ final class BluetoothDiscovery: NSObject {
         case .unknown:
             stopTransportsForUnavailableState()
             setRunning(false, message: "Bluetooth authorization or adapter state is not ready yet. Monitoring will retry when macOS reports a state.")
-        @unknown default:
-            stopTransportsForUnavailableState()
-            setRunning(false, message: "Bluetooth reported an unsupported adapter state. Retry after checking System Settings.")
+        }
+    }
+
+    private static func availability(for state: CBManagerState) -> BluetoothAvailability {
+        switch state {
+        case .poweredOn: .ready
+        case .unauthorized: .denied
+        case .poweredOff: .poweredOff
+        case .unsupported: .unsupported
+        case .resetting: .resetting
+        case .unknown: .unknown
+        @unknown default: .unknown
         }
     }
 
@@ -150,7 +160,7 @@ final class BluetoothDiscovery: NSObject {
         inquiry.inquiryLength = inquiryDuration
         inquiry.updateNewDeviceNames = false
         activeInquiry = inquiry
-        activeInquiryGeneration = generation
+        activeInquiryGeneration = callbackGeneration.current
         activeInquiryFoundCount = 0
         inquiryPolicy.beginInquiry()
 
@@ -171,7 +181,7 @@ final class BluetoothDiscovery: NSObject {
             setRunning(false, message: "Waiting for macOS to begin Bluetooth Classic discovery...")
         }
         // macOS 26 does not deliver deviceInquiryStarted; a throttled start fails fast instead.
-        let startedGeneration = generation
+        let startedGeneration = callbackGeneration.current
         Timer.scheduledTimer(withTimeInterval: startGracePeriod, repeats: false) { [weak self, weak inquiry] _ in
             Task { @MainActor in
                 guard let self, let inquiry, inquiry === self.activeInquiry,
@@ -182,7 +192,7 @@ final class BluetoothDiscovery: NSObject {
     }
 
     private func observeInquiry(_ evidence: ClassicInquiryPolicy.Evidence) {
-        guard activeInquiry != nil, activeInquiryGeneration == generation, wantsMonitoring else { return }
+        guard activeInquiry != nil, callbackGeneration.accepts(activeInquiryGeneration), wantsMonitoring else { return }
         let changed = inquiryPolicy.observe(evidence)
         guard changed || !isRunning else { return }
         logger.notice("Classic inquiry evidence: \(String(describing: evidence), privacy: .public); readiness: \(String(describing: self.inquiryPolicy.readiness), privacy: .public).")
@@ -192,11 +202,11 @@ final class BluetoothDiscovery: NSObject {
         setRunning(true, message: message)
         let buffered = Array(pendingBLE.values)
         pendingBLE.removeAll()
-        for device in buffered { deliver(device, generation: generation) }
+        for device in buffered { deliver(device, generation: callbackGeneration.current) }
     }
 
     private func stopTransportsForUnavailableState() {
-        generation &+= 1
+        callbackGeneration.advance()
         inquiryPolicy.reset()
         classicGapTimer?.invalidate()
         classicGapTimer = nil
@@ -215,10 +225,10 @@ final class BluetoothDiscovery: NSObject {
 
     private func scheduleNextInquiry() {
         classicGapTimer?.invalidate()
-        let scheduledGeneration = generation
+        let scheduledGeneration = callbackGeneration.current
         classicGapTimer = Timer.scheduledTimer(withTimeInterval: inquiryGap, repeats: false) { [weak self] _ in
             Task { @MainActor in
-                guard let self, self.generation == scheduledGeneration,
+                guard let self, self.callbackGeneration.accepts(scheduledGeneration),
                       self.wantsMonitoring, self.central?.state == .poweredOn else { return }
                 self.classicGapTimer = nil
                 self.startClassicInquiry()
@@ -238,7 +248,7 @@ final class BluetoothDiscovery: NSObject {
 
     private func deliver(_ device: DiscoveredDevice, generation callbackGeneration: UInt64) {
         guard wantsMonitoring, isRunning,
-              callbackGeneration == generation,
+              self.callbackGeneration.accepts(callbackGeneration),
               central?.state == .poweredOn else { return }
         onDevice?(device)
     }
@@ -267,7 +277,7 @@ extension BluetoothDiscovery: CBCentralManagerDelegate {
             id: identity, name: advertisedName ?? peripheral.name, rssi: RSSI.intValue
         )
         guard bleThrottle.shouldDeliver(device, at: ProcessInfo.processInfo.systemUptime) else { return }
-        if isRunning { deliver(device, generation: generation) }
+        if isRunning { deliver(device, generation: self.callbackGeneration.current) }
         else { pendingBLE[identity] = device }
     }
 }
@@ -275,7 +285,7 @@ extension BluetoothDiscovery: CBCentralManagerDelegate {
 extension BluetoothDiscovery: IOBluetoothDeviceInquiryDelegate {
     func deviceInquiryStarted(_ sender: IOBluetoothDeviceInquiry!) {
         guard let sender, sender === activeInquiry,
-              activeInquiryGeneration == generation, wantsMonitoring else { return }
+              callbackGeneration.accepts(activeInquiryGeneration), wantsMonitoring else { return }
         observeInquiry(.startedCallback)
     }
 
@@ -289,7 +299,7 @@ extension BluetoothDiscovery: IOBluetoothDeviceInquiryDelegate {
         let address = senderDeviceAddress(device)
         guard !address.isEmpty else { return }
         activeInquiryFoundCount += 1
-        if callbackGeneration == generation { observeInquiry(.result) }
+        if self.callbackGeneration.accepts(callbackGeneration) { observeInquiry(.result) }
         deliver(
             DiscoveredDevice(
                 id: DeviceIdentity(transport: .classic, identifier: address),
@@ -308,11 +318,11 @@ extension BluetoothDiscovery: IOBluetoothDeviceInquiryDelegate {
         let wasLive = inquiryPolicy.isInquiryLive
         logger.notice("Classic inquiry completed: error \(Self.errorCode(error), privacy: .public), aborted: \(aborted), live: \(wasLive), results: \(self.activeInquiryFoundCount).")
         activeInquiry = nil
-        let callbackGeneration = activeInquiryGeneration
+        guard let inquiryGeneration = activeInquiryGeneration else { return }
         activeInquiryGeneration = nil
 
         guard wantsMonitoring else { return }
-        guard callbackGeneration == generation else {
+        guard self.callbackGeneration.accepts(inquiryGeneration) else {
             if central?.state == .poweredOn { startTransportsIfReady() }
             return
         }

@@ -141,12 +141,14 @@ open "build/Bluetooth Watch.app"
 `scripts/test.sh` runs `swift test`, adding the Swift Testing search paths that
 Command Line Tools-only setups need (XCTest requires full Xcode).
 
-The portable Swift Testing target covers the ten-second boundary, startup exclusion,
+The Swift Testing targets cover the ten-second boundary, startup exclusion,
 deduplication, pause/resume, ignore/undo/restart, interrupted observation, direct
 pairing decisions, BLE pairing probe decisions and evidence, settings fallback,
-outcomes, and cancellation.
-It can run on Linux with Swift installed. The native executable is included
-only on macOS. A GitHub Actions workflow builds/tests on `macos-latest` and
+outcomes, cancellation, stale scanner generations, recovery baselines, and
+notification run routing. AppModel integration tests inject fake scanner and
+notification services and run on macOS without Bluetooth hardware or permission
+prompts. The core tests can also run on Linux with Swift installed; the native
+app and integration tests are included only on macOS. A GitHub Actions workflow builds/tests on `macos-latest` and
 archives an app when this project is hosted in a GitHub repository.
 
 **Verification status:** portable logic can be tested independently, but native

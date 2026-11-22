@@ -25,9 +25,12 @@ final class AppModel: ObservableObject {
     private(set) var statusSymbolName = ""
 
     private var session = DiscoverySession()
-    private lazy var scanner = BluetoothDiscovery()
+    private let scannerFactory: @MainActor () -> BluetoothDiscoveryServing
+    private let notificationFactory: @MainActor (String) -> NotificationServing
+    private let uptime: () -> TimeInterval
+    private lazy var scanner: BluetoothDiscoveryServing = scannerFactory()
     private let runID = UUID().uuidString
-    private lazy var notifications = NotificationHub(runID: runID)
+    private lazy var notifications: NotificationServing = notificationFactory(runID)
     private lazy var pairing = PairingController(
         driver: ClassicPairingDriver(), leDriver: LEPairingDriver()
     ) { [weak self] device in
@@ -40,7 +43,17 @@ final class AppModel: ObservableObject {
     private var applicationObserver: NSObjectProtocol?
     private var isAsleep = false
     private var started = false
-    private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
+    private var now: TimeInterval { uptime() }
+
+    init(
+        scannerFactory: @escaping @MainActor () -> BluetoothDiscoveryServing = { BluetoothDiscovery() },
+        notificationFactory: @escaping @MainActor (String) -> NotificationServing = { NotificationHub(runID: $0) },
+        uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    ) {
+        self.scannerFactory = scannerFactory
+        self.notificationFactory = notificationFactory
+        self.uptime = uptime
+    }
 
     var listSections: DeviceListSections { DeviceListSections(records: records) }
     var selectedRecord: DeviceRecord? {
@@ -82,11 +95,12 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             self.scannerMessage = message
             self.classicCoverageConfirmed = self.scanner.isClassicConfirmed
-            if running && !self.isPaused && !self.isAsleep {
-                self.session.resume(at: self.now)
-            } else if self.session.isScanning {
-                self.session.interrupt(at: self.now)
-            }
+            self.session.updateScannerState(
+                isRunning: running,
+                isPaused: self.isPaused,
+                isAsleep: self.isAsleep,
+                at: self.now
+            )
             self.refresh()
         }
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -285,18 +299,22 @@ final class AppModel: ObservableObject {
     }
 
     private func handleNotification(run: String, identifier: String, action: DeviceNotificationAction) {
-        guard run == runID,
-              let record = session.records.values.first(where: { $0.id.notificationIdentifier == identifier })
-        else {
+        let route = NotificationRoute.resolve(
+            notificationRunID: run,
+            currentRunID: runID,
+            notificationIdentifier: identifier,
+            currentDevices: Set(session.records.keys)
+        )
+        guard case .device(let id) = route else {
             actionMessage = "That alert belongs to an earlier run. Choose a device from the current list."
             onReveal?()
             return
         }
         switch action {
-        case .pair: pair(record.id)
-        case .ignore: ignore(record.id)
+        case .pair: pair(id)
+        case .ignore: ignore(id)
         case .review:
-            selectedDeviceID = record.id
+            selectedDeviceID = id
             onReveal?()
         }
     }

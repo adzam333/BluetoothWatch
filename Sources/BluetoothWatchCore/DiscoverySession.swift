@@ -49,6 +49,20 @@ public struct DiscoverySession {
         baselineStartedAt = nil
     }
 
+    /// Applies a native scanner state change to the discovery baseline.
+    public mutating func updateScannerState(
+        isRunning scannerIsRunning: Bool,
+        isPaused: Bool,
+        isAsleep: Bool,
+        at now: TimeInterval
+    ) {
+        if scannerIsRunning && !isPaused && !isAsleep {
+            resume(at: now)
+        } else if isScanning {
+            interrupt(at: now)
+        }
+    }
+
     /// Returns true once for an alert-eligible post-baseline identity. Unused opportunities are
     /// discarded when scanning is interrupted or the identity is ignored.
     @discardableResult
