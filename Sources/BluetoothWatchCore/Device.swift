@@ -46,6 +46,12 @@ public struct DiscoveredDevice: Identifiable, Equatable, Sendable {
         return name
     }
 
+    public mutating func mergeObservation(_ observation: DiscoveredDevice) {
+        precondition(id == observation.id, "Cannot merge observations of different devices")
+        if observation.hasName { name = observation.name }
+        if let rssi = observation.rssi { self.rssi = rssi }
+    }
+
     /// Anonymous BLE advertisers (often rotating private addresses) do not alert.
     public var isAlertEligible: Bool {
         id.transport == .classic || hasName

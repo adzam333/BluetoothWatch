@@ -72,8 +72,7 @@ public struct DiscoverySession {
         var record: DeviceRecord
         if let existing = records[device.id] {
             record = existing
-            if device.hasName { record.device.name = device.name }
-            if let rssi = device.rssi { record.device.rssi = rssi }
+            record.device.mergeObservation(device)
             record.lastSeen = now
         } else {
             record = DeviceRecord(

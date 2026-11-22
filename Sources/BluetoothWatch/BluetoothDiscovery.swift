@@ -280,8 +280,14 @@ extension BluetoothDiscovery: CBCentralManagerDelegate {
             id: identity, name: advertisedName ?? peripheral.name, rssi: RSSI.intValue
         )
         guard bleThrottle.shouldDeliver(device, at: ProcessInfo.processInfo.systemUptime) else { return }
-        if isRunning { deliver(device, generation: self.callbackGeneration.current) }
-        else { pendingBLE[identity] = device }
+        if isRunning {
+            deliver(device, generation: self.callbackGeneration.current)
+        } else if var buffered = pendingBLE[identity] {
+            buffered.mergeObservation(device)
+            pendingBLE[identity] = buffered
+        } else {
+            pendingBLE[identity] = device
+        }
     }
 }
 
