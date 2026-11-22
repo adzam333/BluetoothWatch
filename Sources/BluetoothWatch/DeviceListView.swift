@@ -6,6 +6,18 @@ struct DeviceListView: View {
     static let width: CGFloat = 460
     static let height: CGFloat = 620
     @ObservedObject var model: AppModel
+    @State private var searchText = ""
+    @State private var selectedFilter: DeviceListFilter = .named
+
+    private var filteredRecords: [DeviceRecord] {
+        selectedFilter.records(in: model.listSections, matching: searchText)
+    }
+
+    private func revealSelectedRecord() {
+        guard let record = model.selectedRecord else { return }
+        searchText = ""
+        selectedFilter = record.isIgnored ? .ignored : .named
+    }
 
     var body: some View {
         let sections = model.listSections
@@ -53,20 +65,44 @@ struct DeviceListView: View {
                     Button("Bluetooth Settings") { model.openSettings(for: record.id) }
                 }
             }
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Search name or identifier", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Search devices by name or identifier")
+                Picker("Filter devices", selection: $selectedFilter) {
+                    ForEach(DeviceListFilter.allCases) { filter in
+                        Text(filter.title).tag(filter)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .accessibilityLabel("Filter devices")
+            }
             ScrollViewReader { proxy in
                 List {
-                    Section("Discovered this run") {
-                        if sections.visible.isEmpty {
-                            Text("No named devices to show. Put a device in pairing mode to make it discoverable.")
-                                .foregroundStyle(.secondary)
-                        }
-                        ForEach(sections.visible) { record in
-                            DeviceRow(model: model, record: record).id(record.id)
+                    if selectedFilter != .ignored {
+                        Section("Discovered this run") {
+                            if filteredRecords.isEmpty {
+                                Text(model.listSections.visible.isEmpty
+                                    ? "No named devices to show. Put a device in pairing mode to make it discoverable."
+                                    : "No named devices match this search or filter.")
+                                    .foregroundStyle(.secondary)
+                            }
+                            ForEach(filteredRecords) { record in
+                                DeviceRow(model: model, record: record).id(record.id)
+                            }
                         }
                     }
-                    if !sections.ignored.isEmpty {
+                    if selectedFilter == .ignored {
                         Section("Ignored until the app restarts") {
-                            ForEach(sections.ignored) { record in
+                            if filteredRecords.isEmpty {
+                                Text(sections.ignored.isEmpty
+                                    ? "No ignored named devices."
+                                    : "No ignored devices match this search.")
+                                    .foregroundStyle(.secondary)
+                            }
+                            ForEach(filteredRecords) { record in
                                 DeviceRow(model: model, record: record).id(record.id)
                             }
                         }
@@ -75,11 +111,15 @@ struct DeviceListView: View {
                 .listStyle(.inset)
                 .onChange(of: model.selectedDeviceID) { _, id in
                     if let id {
+                        revealSelectedRecord()
                         withAnimation { proxy.scrollTo(id, anchor: .center) }
                     }
                 }
                 .onAppear {
-                    if let id = model.selectedDeviceID { proxy.scrollTo(id, anchor: .center) }
+                    if let id = model.selectedDeviceID {
+                        revealSelectedRecord()
+                        proxy.scrollTo(id, anchor: .center)
+                    }
                 }
             }
             HStack {
@@ -122,7 +162,7 @@ private struct DeviceRow: View {
                 .lineLimit(1).truncationMode(.middle)
             TimelineView(.periodic(from: .now, by: 5)) { _ in
                 let age = max(0, Int(ProcessInfo.processInfo.systemUptime - record.lastSeen))
-                Text("Last seen \(age)s ago. Discoverable does not always mean pairable.")
+                Text("Last reported \(age)s ago. Discoverable does not always mean pairable.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if let pairingStatus = model.pairingStatuses[record.id] {

@@ -46,6 +46,9 @@ No administrator access, cloud service, or third-party packages are needed.
 - The list shows only devices with nonempty names, including in the Ignored
   section. Unnamed devices remain in the discovery history and appear if a
   name is subsequently reported.
+- Search devices by name or identifier, or filter the list to named devices,
+  Bluetooth Classic, Bluetooth LE, or Ignored. Selecting a device clears the
+  search and switches to the relevant list section.
 - Only Bluetooth Classic devices and Bluetooth LE devices that report a name
   alert. Anonymous BLE advertisers (often phones, watches and trackers rotating
   private addresses) do not appear in the list or notify. A BLE device first

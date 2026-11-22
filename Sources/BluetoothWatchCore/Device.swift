@@ -77,3 +77,41 @@ public struct DeviceListSections {
         }
     }
 }
+
+public enum DeviceListFilter: String, CaseIterable, Identifiable, Sendable {
+    case named
+    case classic
+    case lowEnergy
+    case ignored
+
+    public var id: String { rawValue }
+    public var title: String {
+        switch self {
+        case .named: "Named"
+        case .classic: "Classic"
+        case .lowEnergy: "Bluetooth LE"
+        case .ignored: "Ignored"
+        }
+    }
+
+    public func records(in sections: DeviceListSections, matching search: String) -> [DeviceRecord] {
+        let candidates: [DeviceRecord]
+        switch self {
+        case .named:
+            candidates = sections.visible
+        case .classic:
+            candidates = sections.visible.filter { $0.id.transport == .classic }
+        case .lowEnergy:
+            candidates = sections.visible.filter { $0.id.transport == .lowEnergy }
+        case .ignored:
+            candidates = sections.ignored
+        }
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return candidates }
+        return candidates.filter {
+            $0.device.displayName.localizedCaseInsensitiveContains(query)
+                || $0.id.identifier.localizedCaseInsensitiveContains(query)
+                || $0.id.transport.label.localizedCaseInsensitiveContains(query)
+        }
+    }
+}

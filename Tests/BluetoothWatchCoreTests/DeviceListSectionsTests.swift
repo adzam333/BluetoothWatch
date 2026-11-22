@@ -90,4 +90,37 @@ struct DeviceListSectionsTests {
         #expect(sections.visible.map(\.id) == [second.id, first.id])
         #expect(sections.ignored.map(\.id) == [ignored.id])
     }
+
+    @Test func filtersNamedDevicesByTransportAndIgnoredState() {
+        var session = DiscoverySession()
+        session.resume(at: 0)
+        let classic = device("aa:bb:cc:dd:ee:ff", transport: .classic, name: "Keyboard")
+        let lowEnergy = device("sensor-uuid", name: "Sensor")
+        let ignored = device("headset-uuid", transport: .lowEnergy, name: "Headset")
+        for item in [classic, lowEnergy, ignored] {
+            session.discover(item, at: 1)
+        }
+        session.setIgnored(true, for: ignored.id)
+        let sections = DeviceListSections(records: Array(session.records.values))
+
+        #expect(Set(DeviceListFilter.named.records(in: sections, matching: "").map(\.id)) == [classic.id, lowEnergy.id])
+        #expect(DeviceListFilter.classic.records(in: sections, matching: "").map(\.id) == [classic.id])
+        #expect(DeviceListFilter.lowEnergy.records(in: sections, matching: "").map(\.id) == [lowEnergy.id])
+        #expect(DeviceListFilter.ignored.records(in: sections, matching: "").map(\.id) == [ignored.id])
+    }
+
+    @Test func searchesNamesIdentifiersAndTransportLabelsCaseInsensitively() {
+        var session = DiscoverySession()
+        session.resume(at: 0)
+        let classic = device("AA:BB:CC:DD:EE:FF", transport: .classic, name: "Keyboard")
+        let lowEnergy = device("Sensor-UUID", name: "Room Sensor")
+        session.discover(classic, at: 1)
+        session.discover(lowEnergy, at: 1)
+        let sections = DeviceListSections(records: Array(session.records.values))
+
+        #expect(DeviceListFilter.named.records(in: sections, matching: "KEY").map(\.id) == [classic.id])
+        #expect(DeviceListFilter.named.records(in: sections, matching: "sensor-uuid").map(\.id) == [lowEnergy.id])
+        #expect(DeviceListFilter.named.records(in: sections, matching: "bluetooth classic").map(\.id) == [classic.id])
+        #expect(DeviceListFilter.named.records(in: sections, matching: "  ").count == 2)
+    }
 }

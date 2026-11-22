@@ -40,6 +40,9 @@ final class AppModel: ObservableObject {
     private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
     var listSections: DeviceListSections { DeviceListSections(records: records) }
+    var selectedRecord: DeviceRecord? {
+        records.first { $0.id == selectedDeviceID }
+    }
     var selectedUnnamedRecord: DeviceRecord? {
         records.first { $0.id == selectedDeviceID && !$0.device.hasName }
     }
