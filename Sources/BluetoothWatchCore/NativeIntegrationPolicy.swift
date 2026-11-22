@@ -59,4 +59,8 @@ public enum BluetoothAvailability: Equatable, Sendable {
     public var shouldRecreateAfterSettings: Bool {
         self == .denied
     }
+
+    public func shouldHandleOnStart(isRunning: Bool, hasActiveInquiry: Bool) -> Bool {
+        !isRunning && !(self == .ready && hasActiveInquiry)
+    }
 }

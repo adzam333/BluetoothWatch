@@ -35,8 +35,11 @@ final class BluetoothDiscovery: NSObject {
                 queue: .main,
                 options: [CBCentralManagerOptionShowPowerAlertKey: false]
             )
-        } else if !isRunning {
-            handleCentralState(central!.state)
+        } else if let central,
+                  Self.availability(for: central.state).shouldHandleOnStart(
+                    isRunning: isRunning, hasActiveInquiry: activeInquiry != nil
+                  ) {
+            handleCentralState(central.state)
         }
     }
 

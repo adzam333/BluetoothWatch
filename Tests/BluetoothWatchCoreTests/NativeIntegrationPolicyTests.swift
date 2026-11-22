@@ -47,6 +47,21 @@ struct NativeIntegrationPolicyTests {
         #expect(!BluetoothAvailability.unknown.shouldRecreateAfterSettings)
     }
 
+    @Test func startingWhileInquiryIsWaitingDoesNotInvalidateItsGeneration() {
+        #expect(!BluetoothAvailability.ready.shouldHandleOnStart(
+            isRunning: false, hasActiveInquiry: true
+        ))
+        #expect(BluetoothAvailability.ready.shouldHandleOnStart(
+            isRunning: false, hasActiveInquiry: false
+        ))
+        #expect(!BluetoothAvailability.ready.shouldHandleOnStart(
+            isRunning: true, hasActiveInquiry: true
+        ))
+        #expect(BluetoothAvailability.poweredOff.shouldHandleOnStart(
+            isRunning: false, hasActiveInquiry: true
+        ))
+    }
+
     @Test func notificationFromEarlierRunCannotRouteToCurrentDevice() {
         let device = DeviceIdentity(transport: .classic, identifier: "aa:bb:cc:dd:ee:ff")
         #expect(NotificationRoute.resolve(
