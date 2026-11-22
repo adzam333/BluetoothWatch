@@ -84,6 +84,11 @@ No administrator access, cloud service, or third-party packages are needed.
 - Sleep, Bluetooth interruptions, and recovery require another quiet baseline;
   previously seen identities remain excluded. Errors and permissions are shown
   in the menu bar list rather than silently pretending to scan.
+- The menu bar icon distinguishes active scanning, unconfirmed Classic
+  coverage, paused scanning, and scanner errors. Bluetooth and notification
+  settings shortcuts appear where relevant. On returning to Bluetooth Watch
+  from System Settings, scanner availability and notification authorization are
+  checked again.
 - Device observations and ignored identities are in memory only. Restarting
   clears them and begins another 10-second baseline. No discovery telemetry or
   device list is uploaded or written to disk by this app.

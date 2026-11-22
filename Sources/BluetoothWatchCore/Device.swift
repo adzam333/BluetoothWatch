@@ -167,3 +167,26 @@ public struct BLEDiscoveryThrottle: Sendable {
         return name.lowercased()
     }
 }
+
+public enum DiscoveryStatusIconState: Equatable, Sendable {
+    case paused
+    case attention
+    case classicUnconfirmed
+    case watching
+
+    public static func current(isPaused: Bool, isScanning: Bool, classicCoverageConfirmed: Bool) -> Self {
+        if isPaused { return .paused }
+        if !isScanning { return .attention }
+        if !classicCoverageConfirmed { return .classicUnconfirmed }
+        return .watching
+    }
+
+    public var symbolName: String {
+        switch self {
+        case .paused: "pause.circle.fill"
+        case .attention: "exclamationmark.triangle.fill"
+        case .classicUnconfirmed: "questionmark.circle.fill"
+        case .watching: "dot.radiowaves.left.and.right"
+        }
+    }
+}

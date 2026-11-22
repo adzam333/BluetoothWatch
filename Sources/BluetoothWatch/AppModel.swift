@@ -21,6 +21,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var loginNeedsApproval = false
     @Published var selectedDeviceID: DeviceIdentity?
     var onReveal: (() -> Void)?
+    private var onStatusIconChange: ((String, NSColor?) -> Void)?
+    private(set) var statusSymbolName = ""
 
     private var session = DiscoverySession()
     private lazy var scanner = BluetoothDiscovery()
@@ -35,6 +37,7 @@ final class AppModel: ObservableObject {
     }
     private var timer: Timer?
     private var workspaceObservers: [NSObjectProtocol] = []
+    private var applicationObserver: NSObjectProtocol?
     private var isAsleep = false
     private var started = false
     private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
@@ -96,6 +99,9 @@ final class AppModel: ObservableObject {
         workspaceObservers.append(center.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in Task { @MainActor in self?.wake() } })
+        applicationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: NSApp, queue: .main
+        ) { [weak self] _ in Task { @MainActor in self?.appBecameActive() } }
         refreshLoginStatus()
         scanner.start()
     }
@@ -107,6 +113,10 @@ final class AppModel: ObservableObject {
         scanner.stop()
         workspaceObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
         workspaceObservers.removeAll()
+        if let applicationObserver {
+            NotificationCenter.default.removeObserver(applicationObserver)
+            self.applicationObserver = nil
+        }
     }
 
     func togglePause() {
@@ -169,6 +179,20 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func openBluetoothPrivacySettings() {
+        openSystemSettings(
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Bluetooth",
+            fallback: "Open System Settings > Privacy & Security > Bluetooth manually."
+        )
+    }
+
+    func openNotificationSettings() {
+        openSystemSettings(
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=local.bluetoothwatch.app",
+            fallback: "Open System Settings > Notifications > Bluetooth Watch manually."
+        )
+    }
+
     func copyName(_ device: DiscoveredDevice) {
         guard let name = device.name, !name.isEmpty else {
             actionMessage = "This device has not advertised a name. Use its details to identify it."
@@ -198,7 +222,17 @@ final class AppModel: ObservableObject {
     }
 
     func openLoginSettings() { SMAppService.openSystemSettingsLoginItems() }
-    func requestNotificationPermission() { notifications.requestPermission() }
+
+    func observeStatusIcon(_ handler: @escaping (String, NSColor?) -> Void) {
+        onStatusIconChange = handler
+        updateStatusIcon()
+        handler(statusSymbolName, statusIconColor)
+    }
+
+    private func appBecameActive() {
+        scanner.refreshAfterSettings()
+        notifications.refreshPermission()
+    }
 
     private func tick() {
         session.advance(to: now)
@@ -214,6 +248,28 @@ final class AppModel: ObservableObject {
             return $0.id.notificationIdentifier < $1.id.notificationIdentifier
         }
         if records != updated { records = updated }
+        updateStatusIcon()
+    }
+
+    private var statusIconColor: NSColor? {
+        if isPaused { return .systemOrange }
+        if !isScanning { return .systemRed }
+        if !classicCoverageConfirmed { return .systemYellow }
+        return nil
+    }
+
+    private func updateStatusIcon() {
+        let state = DiscoveryStatusIconState.current(
+            isPaused: isPaused,
+            isScanning: isScanning,
+            classicCoverageConfirmed: classicCoverageConfirmed
+        )
+        guard state.symbolName != statusSymbolName else {
+            onStatusIconChange?(statusSymbolName, statusIconColor)
+            return
+        }
+        statusSymbolName = state.symbolName
+        onStatusIconChange?(state.symbolName, statusIconColor)
     }
 
     private func sleep() {
@@ -251,5 +307,13 @@ final class AppModel: ObservableObject {
             return false
         }
         return NSWorkspace.shared.open(url)
+    }
+
+    private func openSystemSettings(_ urlString: String, fallback: String) {
+        guard let url = URL(string: urlString), NSWorkspace.shared.open(url) else {
+            actionMessage = fallback
+            return
+        }
+        actionMessage = nil
     }
 }

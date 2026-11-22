@@ -39,13 +39,16 @@ struct DeviceListView: View {
                 HStack {
                     Button("Retry Discovery") { model.scanNow() }
                     Button("Bluetooth Settings") { model.openSettings() }
+                    if model.scannerMessage.localizedCaseInsensitiveContains("Bluetooth access is denied") {
+                        Button("Bluetooth Privacy") { model.openBluetoothPrivacySettings() }
+                    }
                 }
             }
             if let message = model.notificationMessage {
                 HStack(alignment: .top) {
                     Label(message, systemImage: "bell.slash")
                     Spacer()
-                    Button("Check Permission") { model.requestNotificationPermission() }
+                    Button("Notification Settings") { model.openNotificationSettings() }
                 }.font(.callout)
             }
             if let message = model.actionMessage {

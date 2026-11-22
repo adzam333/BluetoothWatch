@@ -40,6 +40,15 @@ final class BluetoothDiscovery: NSObject {
         }
     }
 
+    func refreshAfterSettings() {
+        guard wantsMonitoring else { return }
+        if central?.state == .unauthorized, !isRunning {
+            central?.delegate = nil
+            central = nil
+        }
+        start()
+    }
+
     func stop() {
         wantsMonitoring = false
         generation &+= 1

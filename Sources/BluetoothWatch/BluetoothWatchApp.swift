@@ -50,6 +50,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.target = self
         item.button?.action = #selector(togglePopover(_:))
         statusItem = item
+        AppModel.shared.observeStatusIcon { [weak self] symbol, tint in
+            guard let button = self?.statusItem?.button else { return }
+            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Bluetooth Watch")
+            button.contentTintColor = tint
+            button.toolTip = AppModel.shared.status
+        }
         popover.behavior = .transient
         popover.contentSize = NSSize(width: DeviceListView.width, height: DeviceListView.height)
         popover.contentViewController = NSHostingController(rootView: DeviceListView(model: .shared))
