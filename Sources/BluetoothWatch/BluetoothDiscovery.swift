@@ -25,6 +25,7 @@ final class BluetoothDiscovery: NSObject {
     private var generation: UInt64 = 0
     private var classicGapTimer: Timer?
     private var pendingBLE: [DeviceIdentity: DiscoveredDevice] = [:]
+    private var bleThrottle = BLEDiscoveryThrottle()
 
     func start() {
         wantsMonitoring = true
@@ -77,7 +78,7 @@ final class BluetoothDiscovery: NSObject {
         central?.stopScan()
         central?.scanForPeripherals(
             withServices: nil,
-            options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
+            options: [CBCentralManagerScanOptionAllowDuplicatesKey: true]
         )
         if activeInquiry == nil { startClassicInquiry() }
     }
@@ -120,7 +121,7 @@ final class BluetoothDiscovery: NSObject {
         guard wantsMonitoring, central?.state == .poweredOn else { return }
         central?.scanForPeripherals(
             withServices: nil,
-            options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
+            options: [CBCentralManagerScanOptionAllowDuplicatesKey: true]
         )
         guard activeInquiry == nil else { return }
         startClassicInquiry()
@@ -256,6 +257,7 @@ extension BluetoothDiscovery: CBCentralManagerDelegate {
         let device = DiscoveredDevice(
             id: identity, name: advertisedName ?? peripheral.name, rssi: RSSI.intValue
         )
+        guard bleThrottle.shouldDeliver(device, at: ProcessInfo.processInfo.systemUptime) else { return }
         if isRunning { deliver(device, generation: generation) }
         else { pendingBLE[identity] = device }
     }

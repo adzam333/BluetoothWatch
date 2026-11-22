@@ -114,4 +114,56 @@ public enum DeviceListFilter: String, CaseIterable, Identifiable, Sendable {
                 || $0.id.transport.label.localizedCaseInsensitiveContains(query)
         }
     }
+
+}
+
+public struct BLEDiscoveryThrottle: Sendable {
+    private struct Observation: Sendable {
+        var deliveredAt: TimeInterval
+        var name: String?
+    }
+
+    public let minimumInterval: TimeInterval
+    private let retentionInterval: TimeInterval
+    private var observations: [DeviceIdentity: Observation] = [:]
+    private var lastPrunedAt: TimeInterval?
+
+    public init(minimumInterval: TimeInterval = 3, retentionInterval: TimeInterval = 120) {
+        self.minimumInterval = max(0, minimumInterval)
+        self.retentionInterval = max(minimumInterval, retentionInterval)
+    }
+
+    /// Allows prompt name updates, otherwise delivers at most once per minimum interval.
+    public mutating func shouldDeliver(_ device: DiscoveredDevice, at now: TimeInterval) -> Bool {
+        guard device.id.transport == .lowEnergy else { return true }
+        pruneIfNeeded(at: now)
+        let name = normalizedName(device.name)
+        guard var prior = observations[device.id] else {
+            observations[device.id] = Observation(deliveredAt: now, name: name)
+            return true
+        }
+
+        if let name, name != prior.name {
+            prior.name = name
+            prior.deliveredAt = now
+            observations[device.id] = prior
+            return true
+        }
+        guard now - prior.deliveredAt >= minimumInterval else { return false }
+        prior.deliveredAt = now
+        observations[device.id] = prior
+        return true
+    }
+
+    private mutating func pruneIfNeeded(at now: TimeInterval) {
+        guard lastPrunedAt.map({ now - $0 >= minimumInterval * 10 }) ?? true else { return }
+        observations = observations.filter { now - $0.value.deliveredAt < retentionInterval }
+        lastPrunedAt = now
+    }
+
+    private func normalizedName(_ name: String?) -> String? {
+        guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty else { return nil }
+        return name.lowercased()
+    }
 }

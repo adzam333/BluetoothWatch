@@ -55,6 +55,11 @@ No administrator access, cloud service, or third-party packages are needed.
   seen without a name alerts once if a name arrives later, unless its discovery
   history excludes the alert. Unnamed Classic devices can still notify; use the
   notification actions or Bluetooth Settings until they report a name.
+- BLE scanning requests duplicate advertisements so macOS can report a later
+  scan-response name. Bluetooth Watch limits repeated delivery to once every
+  three seconds per identity, except that a newly reported name is delivered
+  immediately. This reduces app-side update work; radio power remains managed
+  by macOS, and no quantitative battery-impact measurement is available yet.
 - **Pair** attempts public-API pairing for supported Bluetooth Classic devices.
   Complete any PIN/passkey or confirmation prompt.
 - **Pair** on a Bluetooth LE device is experimental. macOS has no public API to

@@ -123,4 +123,41 @@ struct DeviceListSectionsTests {
         #expect(DeviceListFilter.named.records(in: sections, matching: "bluetooth classic").map(\.id) == [classic.id])
         #expect(DeviceListFilter.named.records(in: sections, matching: "  ").count == 2)
     }
+
+    @Test func bleThrottleLimitsRepeatedReportsButAllowsLateNamesImmediately() {
+        var throttle = BLEDiscoveryThrottle(minimumInterval: 3)
+        let anonymous = device("late-name", name: nil)
+        #expect(throttle.shouldDeliver(anonymous, at: 0) == true)
+        #expect(throttle.shouldDeliver(anonymous, at: 0.25) == false)
+        #expect(throttle.shouldDeliver(anonymous, at: 2.99) == false)
+        #expect(throttle.shouldDeliver(anonymous, at: 3) == true)
+        #expect(throttle.shouldDeliver(anonymous, at: 4) == false)
+
+        let named = device("late-name", name: "Sensor")
+        #expect(throttle.shouldDeliver(named, at: 4.1) == true)
+        #expect(throttle.shouldDeliver(named, at: 5) == false)
+        #expect(throttle.shouldDeliver(named, at: 7.1) == true)
+    }
+
+    @Test func bleThrottleTreatsWhitespaceAndNameCaseChangesAsDuplicates() {
+        var throttle = BLEDiscoveryThrottle(minimumInterval: 3)
+        #expect(throttle.shouldDeliver(device("a", name: "Sensor"), at: 1) == true)
+        #expect(throttle.shouldDeliver(device("a", name: " sensor "), at: 2) == false)
+        #expect(throttle.shouldDeliver(device("a", name: "New sensor"), at: 2.1) == true)
+    }
+
+    @Test func bleThrottlePrunesOldRotatingIdentities() {
+        var throttle = BLEDiscoveryThrottle(minimumInterval: 3, retentionInterval: 10)
+        let first = device("rotating-a")
+        #expect(throttle.shouldDeliver(first, at: 0) == true)
+        #expect(throttle.shouldDeliver(device("rotating-b"), at: 30) == true)
+        #expect(throttle.shouldDeliver(first, at: 31) == true)
+    }
+
+    @Test func bleThrottleDoesNotThrottleClassicDevices() {
+        var throttle = BLEDiscoveryThrottle(minimumInterval: 3)
+        let classic = device("aa:bb:cc:dd:ee:ff", transport: .classic)
+        #expect(throttle.shouldDeliver(classic, at: 1) == true)
+        #expect(throttle.shouldDeliver(classic, at: 1.1) == true)
+    }
 }
