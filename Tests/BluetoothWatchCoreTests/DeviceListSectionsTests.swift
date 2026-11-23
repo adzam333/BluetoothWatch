@@ -109,6 +109,72 @@ struct DeviceListSectionsTests {
         #expect(DeviceListFilter.ignored.records(in: sections, matching: "").map(\.id) == [ignored.id])
     }
 
+    @Test func hideBaselineFilterAppliesToVisibleAndIgnoredButNotNewOrUnnamedDevices() {
+        var session = DiscoverySession()
+        session.resume(at: 0)
+        let baseline = device("baseline", name: "Nearby keyboard")
+        let baselineIgnored = device("baseline-ignored", name: "Nearby headset")
+        let new = device("new", name: "New sensor")
+        let newIgnored = device("new-ignored", name: "New ignored sensor")
+        let unnamedBaseline = device("unnamed-baseline")
+        #expect(session.discover(baseline, at: 1) == false)
+        #expect(session.discover(baselineIgnored, at: 2) == false)
+        #expect(session.discover(unnamedBaseline, at: 3) == false)
+        #expect(session.discover(new, at: 11) == true)
+        #expect(session.discover(newIgnored, at: 12) == true)
+        session.setIgnored(true, for: baselineIgnored.id)
+        session.setIgnored(true, for: newIgnored.id)
+
+        let sections = DeviceListSections(
+            records: Array(session.records.values),
+            hidingBaselineDevices: true
+        )
+
+        #expect(sections.visible.map(\.id) == [new.id])
+        #expect(sections.ignored.map(\.id) == [newIgnored.id])
+        #expect(session.records[baseline.id]?.origin == .baseline)
+        #expect(session.records[baselineIgnored.id]?.isIgnored == true)
+        #expect(session.records[unnamedBaseline.id] != nil)
+    }
+
+    @Test func selectedIgnoredBaselineDeviceIsRevealedInIgnoredSection() {
+        var session = DiscoverySession()
+        session.resume(at: 0)
+        let baseline = device("baseline", name: "Nearby keyboard")
+        #expect(session.discover(baseline, at: 1) == false)
+        session.setIgnored(true, for: baseline.id)
+
+        let sections = DeviceListSections(
+            records: Array(session.records.values),
+            hidingBaselineDevices: true,
+            revealing: baseline.id
+        )
+
+        #expect(sections.visible.isEmpty)
+        #expect(sections.ignored.map(\.id) == [baseline.id])
+    }
+
+    @Test func selectedBaselineDeviceIsRevealedThroughHideFilterAndSearch() {
+        var session = DiscoverySession()
+        session.resume(at: 0)
+        let baseline = device("baseline", name: "Nearby keyboard")
+        let new = device("new", name: "New sensor")
+        #expect(session.discover(baseline, at: 1) == false)
+        #expect(session.discover(new, at: 11) == true)
+        let records = Array(session.records.values)
+
+        let hiddenSections = DeviceListSections(records: records, hidingBaselineDevices: true)
+        let revealedSections = DeviceListSections(
+            records: records,
+            hidingBaselineDevices: true,
+            revealing: baseline.id
+        )
+
+        #expect(DeviceListFilter.named.records(in: hiddenSections, matching: "keyboard").isEmpty)
+        #expect(DeviceListFilter.named.records(in: revealedSections, matching: "keyboard").map(\.id) == [baseline.id])
+        #expect(DeviceListFilter.named.records(in: revealedSections, matching: "sensor").map(\.id) == [new.id])
+    }
+
     @Test func searchesNamesIdentifiersAndTransportLabelsCaseInsensitively() {
         var session = DiscoverySession()
         session.resume(at: 0)

@@ -73,8 +73,15 @@ public struct DeviceListSections {
     public private(set) var visible: [DeviceRecord] = []
     public private(set) var ignored: [DeviceRecord] = []
 
-    public init(records: [DeviceRecord]) {
+    public init(
+        records: [DeviceRecord],
+        hidingBaselineDevices: Bool = false,
+        revealing revealedDeviceID: DeviceIdentity? = nil
+    ) {
         for record in records where record.device.hasName {
+            if hidingBaselineDevices, record.origin == .baseline, record.id != revealedDeviceID {
+                continue
+            }
             if record.isIgnored {
                 ignored.append(record)
             } else {

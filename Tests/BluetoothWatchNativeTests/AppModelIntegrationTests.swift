@@ -115,6 +115,8 @@ struct AppModelIntegrationTests {
         )
         defer { model.shutdown() }
         model.start()
+        var revealCount = 0
+        model.onReveal = { revealCount += 1 }
         scanner.state(true, "Scanning.")
         let device = DiscoveredDevice(
             id: DeviceIdentity(transport: .classic, identifier: "aa:bb:cc:dd:ee:ff"),
@@ -126,9 +128,11 @@ struct AppModelIntegrationTests {
         notifications?.act(runID: "previous-run", identifier: device.id.notificationIdentifier, action: .review)
         #expect(model.selectedDeviceID == nil)
         #expect(model.actionMessage?.contains("earlier run") == true)
+        revealCount = 0
 
         notifications?.act(runID: notifications?.runID ?? "", identifier: device.id.notificationIdentifier, action: .review)
         #expect(model.selectedDeviceID == device.id)
+        #expect(revealCount == 1)
     }
 
     @Test func returningFromSettingsRechecksScannerAndNotificationPermission() async {
