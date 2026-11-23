@@ -92,12 +92,19 @@ disabled; battery impact was not separately measured.
   that interval stay excluded from notifications for the entire run, even if
   they disappear and return.
 - A device first observed after the baseline triggers at most one alert per
-  identity per run. Expand the macOS notification to reveal **Pair** and
-  **Ignore**; clicking the alert opens the menu bar list at that device if it
-  has a name, with the same buttons.
+  identity per run. macOS controls notification layout; **Pair** and
+  **Ignore** may be behind **Options** or require expanding the notification.
+  Clicking the alert opens the menu bar list at that device if it has a name,
+  with the same buttons.
 - The list shows only devices with nonempty names, including in the Ignored
   section. Unnamed devices remain in the discovery history and appear if a
   name is subsequently reported.
+- **Hide baseline devices** hides devices first observed during a quiet
+  discovery baseline, including a recovery baseline after sleep or a scanner
+  interruption. This display-only checkbox is saved across launches; it does
+  not change alerts, discovery history, or ignored state. Explicitly selecting
+  a hidden device temporarily reveals its row, and turning the checkbox off
+  restores all baseline rows.
 - Search devices by name or identifier, or filter the list to named devices,
   Bluetooth Classic, Bluetooth LE, or Ignored. Selecting a device clears the
   search and switches to the relevant list section.
@@ -174,10 +181,16 @@ and Bluetooth Settings remains available. Opening Settings or establishing a
 connection is never reported as successful pairing.
 
 Notification delivery depends on macOS permissions, notification style, and
-Focus. If no alerts appear, check System Settings > Notifications > Bluetooth
-Watch; the device list remains available. For Bluetooth permission, check
-System Settings > Privacy & Security > Bluetooth. Quit from the app's menu to
-stop it completely, and turn off Launch at login before removing the app.
+Focus. The app registers Pair and Ignore actions, but macOS does not provide a
+public API for forcing them to appear inline on every collapsed banner. Choose
+the **Alerts** style in System Settings > Notifications > Bluetooth Watch for
+persistent notifications; this still does not guarantee inline action buttons.
+Clicking the notification opens the selected device in the app when it has a
+name, where both actions remain available. If no alerts appear, check System
+Settings > Notifications > Bluetooth Watch; the device list remains available.
+For Bluetooth permission, check System Settings > Privacy & Security >
+Bluetooth. Quit from the app's menu to stop it completely, and turn off Launch
+at login before removing the app.
 
 ## Development
 

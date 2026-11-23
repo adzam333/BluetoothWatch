@@ -8,9 +8,18 @@ struct DeviceListView: View {
     @ObservedObject var model: AppModel
     @State private var searchText = ""
     @State private var selectedFilter: DeviceListFilter = .named
+    @AppStorage("hideBaselineDevices") private var hideBaselineDevices = false
+
+    private var listSections: DeviceListSections {
+        DeviceListSections(
+            records: model.records,
+            hidingBaselineDevices: hideBaselineDevices,
+            revealing: model.selectedDeviceID
+        )
+    }
 
     private var filteredRecords: [DeviceRecord] {
-        selectedFilter.records(in: model.listSections, matching: searchText)
+        selectedFilter.records(in: listSections, matching: searchText)
     }
 
     private func revealSelectedRecord() {
@@ -20,7 +29,6 @@ struct DeviceListView: View {
     }
 
     var body: some View {
-        let sections = model.listSections
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("Bluetooth Watch", systemImage: "dot.radiowaves.left.and.right").font(.headline)
@@ -45,12 +53,16 @@ struct DeviceListView: View {
                 }
             }
             if let message = model.notificationMessage {
-                HStack(alignment: .top) {
-                    Label(message, systemImage: "bell.slash")
-                    Spacer()
-                    Button("Notification Settings") { model.openNotificationSettings() }
-                }.font(.callout)
+                Label(message, systemImage: "bell.slash").font(.callout)
             }
+            HStack(alignment: .top) {
+                Text("macOS controls banner layout. Pair and Ignore may be under Options. Clicking an alert opens this app at the device when available. Choose Alerts in Notification Settings for persistent notifications.")
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 4)
+                Button("Notification Settings") { model.openNotificationSettings() }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
             if let message = model.actionMessage {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange).textSelection(.enabled)
@@ -87,9 +99,7 @@ struct DeviceListView: View {
                     if selectedFilter != .ignored {
                         Section("Discovered this run") {
                             if filteredRecords.isEmpty {
-                                Text(model.listSections.visible.isEmpty
-                                    ? "No named devices to show. Put a device in pairing mode to make it discoverable."
-                                    : "No named devices match this search or filter.")
+                                Text(emptyVisibleMessage)
                                     .foregroundStyle(.secondary)
                             }
                             ForEach(filteredRecords) { record in
@@ -100,9 +110,7 @@ struct DeviceListView: View {
                     if selectedFilter == .ignored {
                         Section("Ignored until the app restarts") {
                             if filteredRecords.isEmpty {
-                                Text(sections.ignored.isEmpty
-                                    ? "No ignored named devices."
-                                    : "No ignored devices match this search.")
+                                Text(emptyIgnoredMessage)
                                     .foregroundStyle(.secondary)
                             }
                             ForEach(filteredRecords) { record in
@@ -125,6 +133,7 @@ struct DeviceListView: View {
                     }
                 }
             }
+            Toggle("Hide baseline devices", isOn: $hideBaselineDevices)
             HStack {
                 Toggle("Launch at login", isOn: Binding(
                     get: { model.loginEnabled }, set: { model.setLaunchAtLogin($0) }
@@ -144,6 +153,33 @@ struct DeviceListView: View {
             model.refreshLoginStatus()
         }
     }
+
+    private var emptyVisibleMessage: String {
+        if model.listSections.visible.isEmpty {
+            return "No named devices to show. Put a device in pairing mode to make it discoverable."
+        }
+        if hideBaselineDevices,
+           searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           selectedFilter == .named,
+           model.listSections.visible.contains(where: { $0.origin == .baseline }),
+           listSections.visible.isEmpty {
+            return "Baseline devices are hidden. Turn off Hide baseline devices to show them."
+        }
+        return "No named devices match this search or filter."
+    }
+
+    private var emptyIgnoredMessage: String {
+        if model.listSections.ignored.isEmpty {
+            return "No ignored named devices."
+        }
+        if hideBaselineDevices,
+           searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           model.listSections.ignored.contains(where: { $0.origin == .baseline }),
+           listSections.ignored.isEmpty {
+            return "Ignored baseline devices are hidden. Turn off Hide baseline devices to show them."
+        }
+        return "No ignored devices match this search."
+    }
 }
 
 private struct DeviceRow: View {
@@ -157,7 +193,7 @@ private struct DeviceRow: View {
                 Image(systemName: "antenna.radiowaves.left.and.right")
                 Text(record.device.displayName).font(.headline).textSelection(.enabled)
                 Spacer()
-                Text(record.origin == .baseline ? "Startup device" : "New this run")
+                Text(record.origin == .baseline ? "Baseline device" : "New this run")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Text("\(record.id.transport.label) · \(record.id.identifier)")
